@@ -166,6 +166,8 @@ export const projectUpdateSchema = z.object({
   solution: z.string().trim().max(4_000).nullable().optional(),
   audience: z.string().trim().max(2_000).nullable().optional(),
   valueProposition: z.string().trim().max(2_000).nullable().optional(),
+  websiteUrl: z.string().trim().url("Link non valido").max(2_048).nullable().optional(),
+  domain: z.string().trim().max(253).regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i, "Dominio non valido").nullable().optional(),
   scopeIn: z.string().trim().max(4_000).nullable().optional(),
   scopeOut: z.string().trim().max(4_000).nullable().optional(),
   status: projectStatusEnum.optional(),
@@ -292,6 +294,8 @@ export const canvasNodeCreateSchema = z.object({
   type: canvasNodeTypeEnum,
   label: z.string().trim().max(200).default(""),
   body: z.string().trim().max(4_000).optional(),
+  icon: z.string().trim().max(32).optional(),
+  variant: z.enum(["default", "subproject", "tool"]).optional(),
   positionX: z.number(),
   positionY: z.number(),
 });
@@ -304,6 +308,8 @@ export const canvasNodeUpdateSchema = z.object({
   positionX: z.number().optional(),
   positionY: z.number().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  icon: z.string().trim().max(32).nullable().optional(),
+  variant: z.enum(["default", "subproject", "tool"]).optional(),
 });
 
 export const canvasPositionsSchema = z.object({
@@ -322,6 +328,22 @@ export const canvasEdgeSchema = z.object({
   targetNodeId: uuid,
   relation: relationEnum.optional(),
   label: z.string().trim().max(80).optional(),
+  sourceHandle: z.enum(["top", "right", "bottom", "left"]).optional(),
+  targetHandle: z.enum(["top", "right", "bottom", "left"]).optional(),
+});
+
+export const canvasEdgeRoutingSchema = z.object({
+  id: uuid,
+  sourceHandle: z.enum(["top", "right", "bottom", "left"]),
+  targetHandle: z.enum(["top", "right", "bottom", "left"]),
+  routeStyle: z.enum(["smoothstep", "bezier", "straight"]),
+  reverse: z.boolean().optional(),
+});
+
+export const canvasEdgeWaypointSchema = z.object({
+  id: uuid,
+  waypointX: z.number(),
+  waypointY: z.number(),
 });
 
 /* --------------------------------------------------------- relations */

@@ -18,25 +18,30 @@ const publicSchema = z.object({
 
 function readSiteUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL;
-  if (explicit) return explicit.replace(/\/$/, "");
+  if (explicit) {
+    const normalized = /^https?:\/\//i.test(explicit)
+      ? explicit
+      : `https://${explicit}`;
+    const parsed = z.string().url().safeParse(normalized.replace(/\/$/, ""));
+    if (parsed.success) return parsed.data;
+  }
   if (process.env.NEXT_PUBLIC_VERCEL_URL) {
     return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`;
   }
   return "http://localhost:3000";
 }
 
-const parsedPublic = publicSchema.safeParse({
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || undefined,
-  supabaseAnonKey:
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    undefined,
+const parsedUrl = z.string().url().safeParse(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const parsedKey = z.string().min(20).safeParse(
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+);
+
+export const publicEnv = publicSchema.parse({
+  supabaseUrl: parsedUrl.success ? parsedUrl.data : undefined,
+  supabaseAnonKey: parsedKey.success ? parsedKey.data : undefined,
   siteUrl: readSiteUrl(),
 });
-
-export const publicEnv = parsedPublic.success
-  ? parsedPublic.data
-  : { supabaseUrl: undefined, supabaseAnonKey: undefined, siteUrl: readSiteUrl() };
 
 /** True when both Supabase public credentials are present and well formed. */
 export const isSupabaseConfigured =

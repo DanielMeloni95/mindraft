@@ -19,6 +19,7 @@ export async function provisionProject(
     emoji?: string | null;
     color?: string | null;
     sourceIdeaId?: string | null;
+    parentProjectId?: string | null;
     status?: ProjectStatus;
   },
 ): Promise<{ projectId: string; documentId: string; canvasId: string }> {
@@ -32,6 +33,7 @@ export async function provisionProject(
       emoji: params.emoji ?? "🧩",
       color: params.color ?? "#5B5CE2",
       source_idea_id: params.sourceIdeaId ?? null,
+      parent_project_id: params.parentProjectId ?? null,
       status: params.status ?? "exploration",
     })
     .select("id")
@@ -78,6 +80,21 @@ export async function provisionProject(
 
   if (!document || !canvas) {
     throw new Error("Progetto creato ma incompleto: riprova.");
+  }
+
+  if (params.parentProjectId) {
+    const { error: rootNodeError } = await session.supabase.from("canvas_nodes").insert({
+      workspace_id: session.workspace.id,
+      canvas_id: canvas.id,
+      type: "project",
+      label: params.name,
+      position_x: 0,
+      position_y: 0,
+      entity_type: "project",
+      entity_id: project.id,
+      data: { icon: params.emoji ?? "🧩", variant: "subproject" },
+    });
+    if (rootNodeError) throw new Error(`Nodo principale non creato: ${rootNodeError.message}`);
   }
 
   return { projectId: project.id, documentId: document.id, canvasId: canvas.id };

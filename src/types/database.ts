@@ -241,6 +241,8 @@ export type ProjectRow = Timestamps & {
   solution: string | null;
   audience: string | null;
   value_proposition: string | null;
+  website_url: string | null;
+  domain: string | null;
   scope_in: string | null;
   scope_out: string | null;
   status: ProjectStatus;
@@ -250,6 +252,7 @@ export type ProjectRow = Timestamps & {
   cost_currency: string;
   stack: string[];
   source_idea_id: string | null;
+  parent_project_id: string | null;
   next_step: string | null;
   is_favorite: boolean;
   last_activity_at: string;
@@ -435,6 +438,11 @@ export type CanvasEdgeRow = Timestamps & {
   target_node_id: string;
   relation: RelationType;
   label: string | null;
+  source_handle: "top" | "right" | "bottom" | "left";
+  target_handle: "top" | "right" | "bottom" | "left";
+  route_style: "smoothstep" | "bezier" | "straight";
+  waypoint_x: number | null;
+  waypoint_y: number | null;
 };
 
 export type TagRow = Timestamps & {

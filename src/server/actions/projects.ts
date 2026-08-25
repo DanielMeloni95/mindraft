@@ -87,6 +87,8 @@ export async function updateProjectAction(
       ...(rest.valueProposition !== undefined
         ? { value_proposition: rest.valueProposition }
         : {}),
+      ...(rest.websiteUrl !== undefined ? { website_url: rest.websiteUrl } : {}),
+      ...(rest.domain !== undefined ? { domain: rest.domain } : {}),
       ...(rest.scopeIn !== undefined ? { scope_in: rest.scopeIn } : {}),
       ...(rest.scopeOut !== undefined ? { scope_out: rest.scopeOut } : {}),
       ...(rest.status !== undefined ? { status: rest.status } : {}),

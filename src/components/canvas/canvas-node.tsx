@@ -15,6 +15,9 @@ export type MindraftNodeData = {
   entityType: EntityType | null;
   entityId: string | null;
   dimmed: boolean;
+  icon: string | null;
+  variant: "default" | "subproject" | "tool";
+  color: string | null;
   onRename: (id: string, label: string) => void;
 };
 
@@ -48,28 +51,34 @@ export function CanvasNodeCard({ id, data, selected }: NodeProps<MindraftNode>) 
   return (
     <div
       className={cn(
-        "min-w-40 max-w-64 rounded-[var(--radius-lg)] border bg-surface p-2.5 shadow-soft transition-opacity",
-        selected ? "ring-2 ring-primary" : "",
+        "group min-w-48 max-w-72 rounded-xl border bg-surface p-3 shadow-soft transition-[opacity,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-raised",
+        selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-raised" : "",
         data.dimmed ? "opacity-25" : "opacity-100",
       )}
-      style={{ borderColor: style.accent, backgroundColor: style.surface }}
+      style={{
+        borderColor: data.color ?? style.accent,
+        backgroundColor: data.color ? `${data.color}1A` : style.surface,
+      }}
       onDoubleClick={() => setEditing(true)}
     >
-      <Handle type="target" position={Position.Top} />
+      <Handle id="top" type="source" position={Position.Top} className={cn("!size-3 !border-2 !border-surface !bg-primary transition-opacity", selected ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+      <Handle id="right" type="source" position={Position.Right} className={cn("!size-3 !border-2 !border-surface !bg-primary transition-opacity", selected ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+      <Handle id="left" type="source" position={Position.Left} className={cn("!size-3 !border-2 !border-surface !bg-primary transition-opacity", selected ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
 
       <div className="flex items-center gap-1.5">
+        {data.icon && <span className="text-xl leading-none" aria-hidden>{data.icon}</span>}
         <span
           className="inline-block size-2 shrink-0 rounded-full"
-          style={{ backgroundColor: style.accent }}
+          style={{ backgroundColor: data.color ?? style.accent }}
           aria-hidden
         />
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {style.label}
+          {data.variant === "subproject" ? "Sottoprogetto" : data.variant === "tool" ? "Strumento" : style.label}
         </span>
         {href && (
           <a
             href={href}
-            className="ml-auto text-muted-foreground hover:text-foreground"
+            className="nodrag ml-auto text-muted-foreground hover:text-foreground"
             aria-label={`Apri ${data.label}`}
             onClick={(event) => event.stopPropagation()}
           >
@@ -92,7 +101,7 @@ export function CanvasNodeCard({ id, data, selected }: NodeProps<MindraftNode>) 
             }
           }}
           aria-label="Etichetta del nodo"
-          className="mt-1 w-full rounded-[var(--radius-sm)] border border-border bg-surface px-1.5 py-1 text-[13px]"
+          className="nodrag mt-1 w-full rounded-[var(--radius-sm)] border border-border bg-surface px-1.5 py-1 text-[13px]"
         />
       ) : (
         <p className="mt-1 break-words text-[13px] font-medium leading-snug text-foreground">
@@ -106,7 +115,7 @@ export function CanvasNodeCard({ id, data, selected }: NodeProps<MindraftNode>) 
         </p>
       )}
 
-      <Handle type="source" position={Position.Bottom} />
+      <Handle id="bottom" type="source" position={Position.Bottom} className={cn("!size-3 !border-2 !border-surface !bg-primary transition-opacity", selected ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
     </div>
   );
 }

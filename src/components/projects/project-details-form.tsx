@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import { SaveIndicator, type SaveState } from "@/components/common/save-indicator";
@@ -30,6 +30,8 @@ const TEXT_FIELDS = [
 export function ProjectDetailsForm({ project }: { project: ProjectRow }) {
   const router = useRouter();
   const [state, setState] = React.useState<SaveState>("idle");
+  const [websiteUrl, setWebsiteUrl] = React.useState(project.website_url ?? "");
+  const [domain, setDomain] = React.useState(project.domain ?? "");
   const [values, setValues] = React.useState<Record<string, string>>(() =>
     Object.fromEntries(
       TEXT_FIELDS.map((field) => [
@@ -104,6 +106,44 @@ export function ProjectDetailsForm({ project }: { project: ProjectRow }) {
                 if (Number.isFinite(value) && value !== project.progress) {
                   void save({ progress: Math.max(0, Math.min(100, Math.round(value))) });
                 }
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="project-website-url">Link del progetto</Label>
+            <div className="flex gap-2">
+              <Input
+                id="project-website-url"
+                type="url"
+                placeholder="https://esempio.it/progetto"
+                value={websiteUrl}
+                onChange={(event) => setWebsiteUrl(event.target.value)}
+                onBlur={() => {
+                  const next = websiteUrl.trim();
+                  if (next !== (project.website_url ?? "")) void save({ websiteUrl: next || null });
+                }}
+              />
+              {project.website_url && (
+                <a href={project.website_url} target="_blank" rel="noreferrer" className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border" aria-label="Apri link del progetto">
+                  <ExternalLink className="size-4" />
+                </a>
+              )}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="project-domain">Dominio</Label>
+            <Input
+              id="project-domain"
+              placeholder="esempio.it"
+              value={domain}
+              onChange={(event) => setDomain(event.target.value.toLowerCase())}
+              onBlur={() => {
+                const next = domain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+                setDomain(next);
+                if (next !== (project.domain ?? "")) void save({ domain: next || null });
               }}
             />
           </div>
