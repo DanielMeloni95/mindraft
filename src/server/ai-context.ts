@@ -121,6 +121,7 @@ export async function buildProjectContext(
       .from("documents")
       .select("plain_text")
       .eq("project_id", projectId)
+      .eq("kind", "document")
       .is("deleted_at", null)
       .maybeSingle(),
   ]);

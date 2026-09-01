@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { segment: "", label: "Overview" },
   { segment: "document", label: "Documento" },
+  { segment: "agentic-document", label: "Documento agentico" },
   { segment: "canvas", label: "Canvas" },
+  { segment: "subprojects", label: "Sottoprogetti" },
   { segment: "roadmap", label: "Roadmap" },
   { segment: "tasks", label: "Attività" },
   { segment: "decisions", label: "Decisioni" },

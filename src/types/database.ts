@@ -278,6 +278,7 @@ export type DocumentRow = Timestamps & {
   project_id: string | null;
   idea_id: string | null;
   title: string;
+  kind: "document" | "agentic";
   content: Json;
   plain_text: string;
   revision: number;

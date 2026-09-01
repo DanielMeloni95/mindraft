@@ -27,6 +27,7 @@ export default async function ProjectsPage({
     statuses: statuses.length > 0 ? statuses : null,
     search: params.q ?? null,
     includeArchived: statuses.includes("archived"),
+    rootOnly: true,
   });
 
   return (

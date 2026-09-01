@@ -29,6 +29,10 @@ export async function listProjects(
     favoritesOnly?: boolean;
     includeArchived?: boolean;
     limit?: number;
+    parentProjectId?: string | null;
+    subprojectsOnly?: boolean;
+    rootOnly?: boolean;
+    excludeTools?: boolean;
   } = {},
 ): Promise<ProjectListItem[]> {
   let query = supabase
@@ -45,6 +49,9 @@ export async function listProjects(
     query = query.neq("status", "archived");
   }
   if (options.favoritesOnly) query = query.eq("is_favorite", true);
+  if (options.parentProjectId) query = query.eq("parent_project_id", options.parentProjectId);
+  if (options.subprojectsOnly) query = query.not("parent_project_id", "is", null);
+  if (options.rootOnly) query = query.is("parent_project_id", null);
   if (options.search && options.search.trim().length > 1) {
     query = query.ilike("name", `%${options.search.trim()}%`);
   }
@@ -52,7 +59,17 @@ export async function listProjects(
   const { data, error } = await query;
   if (error) throw new Error(`Progetti non disponibili: ${error.message}`);
 
-  const projects = (data ?? []) as ProjectRow[];
+  let projects = (data ?? []) as ProjectRow[];
+  if (options.excludeTools && projects.length) {
+    const { data: toolNodes, error: toolError } = await supabase.from("canvas_nodes")
+      .select("entity_id")
+      .eq("workspace_id", workspaceId)
+      .eq("entity_type", "project")
+      .contains("data", { variant: "tool" });
+    if (toolError) throw new Error(`Classificazione progetti non disponibile: ${toolError.message}`);
+    const toolIds = new Set((toolNodes ?? []).map((node) => node.entity_id).filter(Boolean));
+    projects = projects.filter((project) => !toolIds.has(project.id));
+  }
   if (projects.length === 0) return [];
 
   const ids = projects.map((p) => p.id);
@@ -131,7 +148,7 @@ export async function getProject(
     supabase.from("decisions").select("*").eq("project_id", projectId).is("deleted_at", null).order("created_at", { ascending: false }),
     supabase.from("risks").select("*").eq("project_id", projectId).is("deleted_at", null).order("created_at", { ascending: false }),
     supabase.from("resources").select("*").eq("project_id", projectId).is("deleted_at", null).order("created_at", { ascending: false }),
-    supabase.from("documents").select("id, title, revision, updated_at").eq("project_id", projectId).is("deleted_at", null).maybeSingle(),
+    supabase.from("documents").select("id, title, revision, updated_at").eq("project_id", projectId).eq("kind", "document").is("deleted_at", null).maybeSingle(),
     supabase.from("canvases").select("id").eq("project_id", projectId).is("deleted_at", null).maybeSingle(),
   ]);
 
@@ -158,6 +175,22 @@ export async function getProject(
     sourceIdea,
     canvasId: canvas?.id ?? null,
   };
+}
+
+export async function listToolProjects(supabase: Supabase, workspaceId: string): Promise<ProjectRow[]> {
+  const { data: nodes, error: nodeError } = await supabase.from("canvas_nodes")
+    .select("entity_id")
+    .eq("workspace_id", workspaceId)
+    .eq("entity_type", "project")
+    .contains("data", { variant: "tool" });
+  if (nodeError) throw new Error(`Strumenti non disponibili: ${nodeError.message}`);
+  const ids = [...new Set((nodes ?? []).map((node) => node.entity_id).filter((id): id is string => Boolean(id)))];
+  if (!ids.length) return [];
+  const { data, error } = await supabase.from("projects").select("*")
+    .eq("workspace_id", workspaceId).in("id", ids).is("deleted_at", null)
+    .order("last_activity_at", { ascending: false });
+  if (error) throw new Error(`Strumenti non disponibili: ${error.message}`);
+  return (data ?? []) as ProjectRow[];
 }
 
 export async function getProjectHeader(

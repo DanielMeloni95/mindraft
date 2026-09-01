@@ -19,6 +19,7 @@ export type MindraftNodeData = {
   variant: "default" | "subproject" | "tool";
   color: string | null;
   onRename: (id: string, label: string) => void;
+  origin?: string | null;
 };
 
 export type MindraftNode = Node<MindraftNodeData, "mindraft">;

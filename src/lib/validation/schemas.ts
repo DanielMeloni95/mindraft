@@ -151,6 +151,7 @@ export const projectCreateSchema = z.object({
   emoji: z.string().trim().max(8).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Colore non valido").optional(),
   sourceIdeaId: uuid.optional(),
+  parentProjectId: uuid.optional(),
   status: projectStatusEnum.optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;

@@ -3,7 +3,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Download, History, ListPlus, Save } from "lucide-react";
+import { Download, FileText, History, ListPlus, Network, RefreshCw, RotateCcw, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { ErrorBoundary } from "@/components/common/error-boundary";
@@ -20,12 +20,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { extractTasksAction } from "@/server/actions/ai";
 import { createTaskAction } from "@/server/actions/tasks";
 import {
+  generateFromAgenticDocumentAction,
+  importAgenticPdfAction,
+  regenerateAgenticTemplateAction,
   restoreDocumentVersionAction,
+  saveDocumentAction,
   snapshotDocumentAction,
+  syncAgenticCanvasAction,
 } from "@/server/actions/documents";
 import type { JSONContent } from "@tiptap/react";
 import type { ExtractTasksResult } from "@/lib/ai/schemas";
-import { docToMarkdown, docToPlainText, type TipTapNode } from "@/lib/domain/tiptap";
+import { docToPlainText, textToDoc, type TipTapNode } from "@/lib/domain/tiptap";
 
 export type JsonDoc = JSONContent;
 
@@ -54,6 +59,7 @@ export function DocumentWorkspace({
   initialRevision,
   versions,
   canWrite,
+  agentic = false,
 }: {
   documentId: string;
   projectId: string;
@@ -62,6 +68,7 @@ export function DocumentWorkspace({
   initialRevision: number;
   versions: Array<{ id: string; revision: number; label: string | null; created_at: string }>;
   canWrite: boolean;
+  agentic?: boolean;
 }) {
   const router = useRouter();
   const [historyOpen, setHistoryOpen] = React.useState(false);
@@ -69,22 +76,126 @@ export function DocumentWorkspace({
     (ExtractTasksResult & { provider: string }) | null
   >(null);
   const [pending, startTransition] = React.useTransition();
-
-  const exportMarkdown = () => {
-    const markdown = `# ${title}\n\n${docToMarkdown(initialContent as TipTapNode)}`;
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${title.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase()}.md`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
+  const importRef = React.useRef<HTMLInputElement>(null);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="min-w-0 flex-1 truncate font-display text-sm font-semibold">{title}</h2>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <FileText className="size-4 text-primary" />
+          <span className="truncate font-display text-sm font-semibold">{agentic ? "Documento agentico" : "Documento"} · {title}</span>
+        </span>
+
+        {canWrite && agentic && (
+          <>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".pdf,.md,.markdown,.txt,application/pdf,text/plain,text/markdown"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                startTransition(async () => {
+                  if (file.type === "application/pdf" || file.name.toLocaleLowerCase().endsWith(".pdf")) {
+                    const formData = new FormData();
+                    formData.set("documentId", documentId);
+                    formData.set("file", file);
+                    const imported = await importAgenticPdfAction(formData);
+                    if (!imported.ok) toast.error(imported.error);
+                    else {
+                      const synced = Object.values(imported.data.entities).reduce((sum, count) => sum + count, 0);
+                      toast.success(`PDF importato: ${imported.data.pages} pagine, ${imported.data.nodes} nodi e ${synced} elementi di progetto sincronizzati`);
+                      router.refresh();
+                    }
+                    event.target.value = "";
+                    return;
+                  }
+                  const text = await file.text();
+                  const content = textToDoc(text);
+                  const result = await saveDocumentAction({
+                    documentId,
+                    content,
+                    plainText: docToPlainText(content),
+                    baseRevision: initialRevision,
+                    snapshotLabel: `Importazione ${file.name}`,
+                  });
+                  if (!result.ok) toast.error(result.error);
+                  else {
+                    toast.success("Documento importato");
+                    router.refresh();
+                  }
+                  event.target.value = "";
+                });
+              }}
+            />
+            <Button variant="secondary" size="sm" onClick={() => importRef.current?.click()} disabled={pending}>
+              <Upload /> Importa PDF / testo
+            </Button>
+          </>
+        )}
+
+        {canWrite && agentic && (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={pending}
+            onClick={() => startTransition(async () => {
+              const result = await syncAgenticCanvasAction(documentId);
+              if (!result.ok) {
+                toast.error(result.error);
+                return;
+              }
+              const synced = Object.values(result.data.entities).reduce((sum, count) => sum + count, 0);
+              toast.success(`Progetto sincronizzato: ${result.data.sections} sezioni e ${synced} nuovi elementi`);
+              router.refresh();
+            })}
+          >
+            <Network /> Sincronizza progetto
+          </Button>
+        )}
+
+        {canWrite && agentic && (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={pending}
+            onClick={() => {
+              if (!window.confirm("Rigenerare il template agentico? Il contenuto corrente verrà sostituito e salvato nella cronologia.")) return;
+              startTransition(async () => {
+                const result = await regenerateAgenticTemplateAction(documentId);
+                if (!result.ok) {
+                  toast.error(result.error);
+                  return;
+                }
+                toast.success(`Template rigenerato e canvas sincronizzato${result.data.nodes ? `: ${result.data.nodes} nuovi nodi` : ""}`);
+                router.refresh();
+              });
+            }}
+          >
+            <RotateCcw /> Rigenera template
+          </Button>
+        )}
+
+        {canWrite && agentic && (
+          <Button
+            variant="primary"
+            size="sm"
+            loading={pending}
+            onClick={() => startTransition(async () => {
+              const result = await generateFromAgenticDocumentAction(documentId);
+              if (!result.ok) {
+                toast.error(result.error);
+                return;
+              }
+              const { goals, milestones, tasks, nodes } = result.data;
+              toast.success(`Generati ${goals} obiettivi, ${milestones} milestone, ${tasks} attività e ${nodes} nodi`);
+              router.refresh();
+            })}
+          >
+            <RefreshCw /> Aggiorna progetto
+          </Button>
+        )}
 
         {canWrite && (
           <Button
@@ -137,19 +248,25 @@ export function DocumentWorkspace({
           <History /> Versioni ({versions.length})
         </Button>
 
-        <Button variant="ghost" size="sm" onClick={exportMarkdown}>
-          <Download /> Markdown
-        </Button>
+        {agentic && <Button variant="secondary" size="sm" asChild>
+          <a href={`/api/projects/${projectId}/agentic-document`}><Download /> Scarica .md</a>
+        </Button>}
       </div>
 
       <ErrorBoundary fallbackMessage="L'editor non si è avviato. Ricarica la pagina: il documento è al sicuro sul server.">
         <RichTextEditor
+          key={`${documentId}-${initialRevision}`}
           documentId={documentId}
           initialContent={initialContent}
           initialRevision={initialRevision}
           readOnly={!canWrite}
+          agentic={agentic}
         />
       </ErrorBoundary>
+
+      {agentic && <p className="rounded-[var(--radius-md)] border border-border bg-surface-muted px-3 py-2 text-[12px] text-muted-foreground">
+        Le modifiche vengono salvate automaticamente. “Rigenera template” ripristina la struttura canonica e sincronizza i nodi principali del canvas; la versione precedente resta nella cronologia. “Aggiorna progetto” materializza obiettivi, roadmap, attività e canvas descritti nel documento.
+      </p>}
 
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent>

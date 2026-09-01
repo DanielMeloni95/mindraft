@@ -188,8 +188,26 @@ create table if not exists public.documents (
   deleted_at timestamptz
 );
 
-create unique index if not exists documents_project_unique
-  on public.documents (project_id) where project_id is not null and deleted_at is null;
+-- A database that predates migration-history tracking may already contain the
+-- later `kind` column and therefore legitimately have both a normal and an
+-- agentic document for the same project. Keep this historical migration
+-- replayable without weakening the constraint on a genuinely fresh schema.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'documents' and column_name = 'kind'
+  ) then
+    create unique index if not exists documents_project_kind_unique
+      on public.documents (project_id, kind)
+      where project_id is not null and deleted_at is null;
+  else
+    create unique index if not exists documents_project_unique
+      on public.documents (project_id)
+      where project_id is not null and deleted_at is null;
+  end if;
+end;
+$$;
 create unique index if not exists documents_idea_unique
   on public.documents (idea_id) where idea_id is not null and deleted_at is null;
 create index if not exists documents_ws_idx on public.documents (workspace_id, updated_at desc);

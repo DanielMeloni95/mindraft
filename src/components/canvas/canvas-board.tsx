@@ -20,7 +20,7 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import { toPng } from "html-to-image";
-import { ArrowLeftRight, Download, GitBranch, LayoutGrid, Maximize2, Minimize2, Plus, Presentation, Route, Search, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Download, GitBranch, LayoutGrid, Layers3, Maximize2, Minimize2, Plus, Presentation, Route, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import "@xyflow/react/dist/style.css";
@@ -116,6 +116,19 @@ const NODE_CLUSTERS: NodeCluster[] = [
     { type: "risk", label: "Rischio", icon: "⚠️" },
     { type: "risk", label: "Assunzione", icon: "❓" },
   ] },
+  { id: "agentic", label: "Documento agentico", icon: "🤖", nodes: [
+    { type: "feature", label: "Perimetro", icon: "🧭" },
+    { type: "resource", label: "Utenti e ruoli", icon: "👥" },
+    { type: "feature", label: "Architettura agentica", icon: "🤖" },
+    { type: "feature", label: "Architettura tecnica", icon: "🏗️" },
+    { type: "feature", label: "Workflow", icon: "🔄" },
+    { type: "resource", label: "Dati e contratti", icon: "🗄️" },
+    { type: "risk", label: "Sicurezza e privacy", icon: "🔐" },
+    { type: "task", label: "Criteri di accettazione", icon: "✅" },
+    { type: "task", label: "Definition of Done", icon: "🏁" },
+    { type: "note", label: "Protocollo operativo", icon: "📜" },
+    { type: "decision", label: "Decisioni aperte", icon: "⚖️" },
+  ] },
   { id: "resources", label: "Risorse e conoscenza", icon: "🧰", nodes: [
     { type: "resource", label: "Strumento", icon: "🛠️", variant: "tool" },
     { type: "resource", label: "Persona / Ruolo", icon: "👥" },
@@ -130,12 +143,13 @@ const ADDABLE = NODE_CLUSTERS.flatMap((cluster) => cluster.nodes);
 
 const ICON_PRESETS = ["📁", "🧩", "🚀", "💡", "🎯", "⭐", "🔥", "✅", "🛠️", "📌", "🌱", "🎨", "💻", "📊", "❤️", "⚡"];
 
-function nodeMetadata(value: CanvasNodeRow["data"]): { icon: string | null; variant: NodeVariant } {
-  if (!value || Array.isArray(value) || typeof value !== "object") return { icon: null, variant: "default" };
+function nodeMetadata(value: CanvasNodeRow["data"]): { icon: string | null; variant: NodeVariant; origin: string | null } {
+  if (!value || Array.isArray(value) || typeof value !== "object") return { icon: null, variant: "default", origin: null };
   const record = value as Record<string, unknown>;
   return {
     icon: typeof record.icon === "string" ? record.icon : null,
     variant: record.variant === "subproject" || record.variant === "tool" ? record.variant : "default",
+    origin: typeof record.origin === "string" ? record.origin : null,
   };
 }
 
@@ -208,6 +222,10 @@ function CanvasInner({
   const [paletteSearch, setPaletteSearch] = React.useState("");
   const [presenting, setPresenting] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<"overview" | "detail">(() => {
+    const hasStrategicMap = initialNodes.some((node) => nodeMetadata(node.data).origin === "agentic_strategy");
+    return hasStrategicMap || initialNodes.length <= 14 ? "detail" : "overview";
+  });
   const [nodeDialogOpen, setNodeDialogOpen] = React.useState(false);
   const [nodeKind, setNodeKind] = React.useState<AddableNode>(ADDABLE[0]);
   const [nodeLabel, setNodeLabel] = React.useState("");
@@ -272,6 +290,15 @@ function CanvasInner({
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState<Edge>(
     toFlowEdges(initialEdges),
   );
+  const visibleNodes = React.useMemo(() => viewMode === "detail"
+    ? nodes
+    : nodes.filter((node) => node.data.nodeType === "project"
+      || node.data.nodeType === "group"
+      || !["agentic_pdf", "agentic_template"].includes(node.data.origin ?? "")),
+  [nodes, viewMode]);
+  const visibleIds = React.useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
+  const visibleEdges = React.useMemo(() => edges.filter((edge) =>
+    visibleIds.has(edge.source) && visibleIds.has(edge.target)), [edges, visibleIds]);
 
   // Keep local state aligned when a server refresh supplies a newer bundle.
   React.useEffect(() => {
@@ -507,11 +534,11 @@ function CanvasInner({
     });
   };
 
-  /** Hierarchical when part-of edges exist, compact grid otherwise. */
+  /** Compact left-to-right organisation chart when part-of edges exist. */
   const autoLayout = () => {
-    const current = flow.getNodes();
+    const current = nodes;
     if (current.length === 0) return;
-    const hierarchicalEdges = flow.getEdges().filter((edge) =>
+    const hierarchicalEdges = edges.filter((edge) =>
       (edge.data as { relation?: RelationType } | undefined)?.relation === "part_of");
     const parentByChild = new Map(hierarchicalEdges.map((edge) => [edge.source, edge.target]));
     const children = new Map<string, string[]>();
@@ -526,10 +553,10 @@ function CanvasInner({
       visiting.add(id);
       const nested = children.get(id) ?? [];
       for (const child of nested) place(child, depth + 1);
-      if (nested.length === 0) positions.set(id, { x: leaf++ * 280, y: depth * 190 });
+      if (nested.length === 0) positions.set(id, { x: depth * 340, y: leaf++ * 145 });
       else {
-        const xs = nested.map((child) => positions.get(child)?.x).filter((x): x is number => x !== undefined);
-        positions.set(id, { x: xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : leaf++ * 280, y: depth * 190 });
+        const ys = nested.map((child) => positions.get(child)?.y).filter((y): y is number => y !== undefined);
+        positions.set(id, { x: depth * 340, y: ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : leaf++ * 145 });
       }
       visiting.delete(id);
     };
@@ -540,13 +567,17 @@ function CanvasInner({
     } else {
       const columns = Math.max(1, Math.ceil(Math.sqrt(current.length)));
       current.forEach((node, index) => positions.set(node.id, {
-        x: (index % columns) * 280,
-        y: Math.floor(index / columns) * 180,
+        x: (index % columns) * 300,
+        y: Math.floor(index / columns) * 165,
       }));
     }
     const next = current.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position }));
     setNodes(next);
-    scheduleLayoutSave();
+    if (canWrite) void saveCanvasLayoutAction({
+      canvasId,
+      nodes: next.map((node) => ({ id: node.id, positionX: Math.round(node.position.x), positionY: Math.round(node.position.y) })),
+      viewport: flow.getViewport(),
+    }).then((result) => { if (!result.ok) toast.error(result.error); });
     setTimeout(() => flow.fitView({ padding: 0.2, duration: 300 }), 50);
   };
 
@@ -687,6 +718,17 @@ function CanvasInner({
           <Button variant="secondary" size="sm" onClick={autoLayout}>
             {edges.some((edge) => (edge.data as { relation?: RelationType })?.relation === "part_of") ? <GitBranch /> : <LayoutGrid />}
             Disponi
+          </Button>
+
+          <Button
+            variant={viewMode === "overview" ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => {
+              setViewMode((current) => current === "overview" ? "detail" : "overview");
+              window.setTimeout(() => flow.fitView({ padding: 0.22, duration: 300 }), 60);
+            }}
+          >
+            <Layers3 /> {viewMode === "overview" ? "Sintesi" : "Dettaglio"}
           </Button>
 
           {selectedNode && (
@@ -1014,8 +1056,8 @@ function CanvasInner({
       </Dialog>
 
       <ReactFlow<MindraftNode, Edge>
-        nodes={nodes}
-        edges={edges}
+        nodes={visibleNodes}
+        edges={visibleEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}

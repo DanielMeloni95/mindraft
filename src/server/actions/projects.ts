@@ -10,7 +10,7 @@ import {
 } from "@/lib/validation/schemas";
 import { fail, guard, ok, parseInput, type ActionResult } from "@/server/action-result";
 import { logActivity, touchProject } from "@/server/activity";
-import { provisionProject } from "@/server/provision";
+import { inheritProjectContext, provisionProject } from "@/server/provision";
 import { requireWriteSession } from "@/server/session";
 
 export async function createProjectAction(
@@ -44,8 +44,14 @@ export async function createProjectAction(
       emoji: parsed.data.emoji ?? null,
       color: parsed.data.color ?? null,
       sourceIdeaId: parsed.data.sourceIdeaId ?? null,
+      parentProjectId: parsed.data.parentProjectId ?? null,
+      entityKind: parsed.data.parentProjectId ? "subproject" : "project",
       status: parsed.data.status,
     });
+
+    if (parsed.data.parentProjectId) {
+      await inheritProjectContext(session, parsed.data.parentProjectId, projectId);
+    }
 
     await logActivity(session.supabase, {
       workspaceId: session.workspace.id,

@@ -13,7 +13,7 @@ import {
 } from "@/lib/validation/schemas";
 import { fail, guard, ok, parseInput, type ActionResult } from "@/server/action-result";
 import { PLANS } from "@/lib/domain/plans";
-import { provisionProject } from "@/server/provision";
+import { inheritProjectContext, provisionProject } from "@/server/provision";
 import { requireWriteSession } from "@/server/session";
 import type { CanvasNodeType, EntityType, Json } from "@/types/database";
 
@@ -64,6 +64,7 @@ export async function createCanvasNodeAction(
         emoji: parsed.data.icon ?? "🧩",
         color: parent.color,
         parentProjectId: parent.id,
+        entityKind: "subproject",
       });
       entityType = "project";
       entityId = created.projectId;
@@ -93,6 +94,41 @@ export async function createCanvasNodeAction(
       }));
       inherited.push({ workspace_id: session.workspace.id, source_type: "project", source_id: created.projectId, target_type: "project", target_id: parent.id, relation: "part_of", note: "Sottoprogetto", created_by: session.userId });
       await session.supabase.from("entity_relations").upsert(inherited, { onConflict: "source_type,source_id,target_type,target_id,relation" });
+    } else if (parsed.data.variant === "tool") {
+      if (!canvas.projectId) return fail("Uno strumento richiede un progetto di riferimento.");
+      const limit = PLANS[session.plan].limits.projects;
+      if (limit >= 0) {
+        const { count } = await session.supabase.from("projects")
+          .select("id", { count: "exact", head: true }).eq("workspace_id", session.workspace.id)
+          .is("deleted_at", null).neq("status", "archived");
+        if ((count ?? 0) >= limit) return fail(`Hai raggiunto il limite di ${limit} progetti del piano ${PLANS[session.plan].name}.`);
+      }
+      const created = await provisionProject(session, {
+        name: parsed.data.label || "Nuovo strumento",
+        shortDescription: parsed.data.body ?? null,
+        emoji: parsed.data.icon ?? "🛠️",
+        parentProjectId: canvas.projectId,
+        entityKind: "tool",
+      });
+      await inheritProjectContext(session, canvas.projectId, created.projectId);
+      entityType = "project";
+      entityId = created.projectId;
+    } else if (parsed.data.type === "project") {
+      const limit = PLANS[session.plan].limits.projects;
+      if (limit >= 0) {
+        const { count } = await session.supabase.from("projects")
+          .select("id", { count: "exact", head: true })
+          .eq("workspace_id", session.workspace.id).is("deleted_at", null).neq("status", "archived");
+        if ((count ?? 0) >= limit) return fail(`Hai raggiunto il limite di ${limit} progetti del piano ${PLANS[session.plan].name}.`);
+      }
+      const created = await provisionProject(session, {
+        name: parsed.data.label || "Nuovo progetto",
+        shortDescription: parsed.data.body ?? null,
+        emoji: parsed.data.icon ?? "📁",
+        entityKind: "project",
+      });
+      entityType = "project";
+      entityId = created.projectId;
     }
 
     const { data, error } = await session.supabase
@@ -116,7 +152,7 @@ export async function createCanvasNodeAction(
       .single();
 
     if (error || !data) return fail(`Nodo non creato: ${error?.message}`);
-    if (entityId && canvas.projectId) {
+    if (entityId && canvas.projectId && parsed.data.variant === "subproject") {
       const { data: parentNode } = await session.supabase.from("canvas_nodes").select("id")
         .eq("canvas_id", parsed.data.canvasId).eq("entity_type", "project").eq("entity_id", canvas.projectId).maybeSingle();
       if (parentNode) await session.supabase.from("canvas_edges").upsert({
@@ -126,6 +162,7 @@ export async function createCanvasNodeAction(
       }, { onConflict: "canvas_id,source_node_id,target_node_id,relation" });
     }
     revalidatePath("/projects");
+    revalidatePath("/tools");
     return ok({ id: data.id, ...(entityType ? { entityType } : {}), ...(entityId ? { entityId } : {}) });
   });
 }

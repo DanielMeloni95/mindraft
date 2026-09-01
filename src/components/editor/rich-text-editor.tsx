@@ -30,11 +30,13 @@ export function RichTextEditor({
   initialContent,
   initialRevision,
   readOnly = false,
+  agentic = false,
 }: {
   documentId: string;
   initialContent: JSONContent;
   initialRevision: number;
   readOnly?: boolean;
+  agentic?: boolean;
 }) {
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
   const [focusMode, setFocusMode] = React.useState(false);
@@ -52,7 +54,7 @@ export function RichTextEditor({
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        class: "mindraft-prose min-h-[60vh] max-w-none px-1 py-4",
+        class: cn("mindraft-prose min-h-[60vh] max-w-none px-1 py-4", agentic && "agentic-prose"),
         role: "textbox",
         "aria-multiline": "true",
         "aria-label": "Documento di progetto",

@@ -20,7 +20,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createProjectAction } from "@/server/actions/projects";
 
-export function NewProjectButton() {
+export function NewProjectButton({
+  parentProjectId,
+  parentProjectName,
+}: {
+  parentProjectId?: string;
+  parentProjectName?: string;
+} = {}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -33,14 +39,16 @@ export function NewProjectButton() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="primary" size="sm">
-          <Plus /> Nuovo progetto
+          <Plus /> {parentProjectId ? "Nuovo sottoprogetto" : "Nuovo progetto"}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nuovo progetto</DialogTitle>
+          <DialogTitle>{parentProjectId ? "Nuovo sottoprogetto" : "Nuovo progetto"}</DialogTitle>
           <DialogDescription>
-            Nasce vuoto ma completo: documento, mappa e sezioni sono già pronti.
+            {parentProjectId
+              ? `Sarà collegato a ${parentProjectName ?? "questo progetto"} ed erediterà contesto e dipendenze.`
+              : "Nasce vuoto ma completo: documento, mappa e sezioni sono già pronti."}
           </DialogDescription>
         </DialogHeader>
 
@@ -95,6 +103,7 @@ export function NewProjectButton() {
                   name: name.trim(),
                   shortDescription: description.trim() || undefined,
                   emoji: emoji.trim() || undefined,
+                  parentProjectId,
                 });
 
                 if (!result.ok) {

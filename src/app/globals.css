@@ -392,6 +392,69 @@
   font-weight: 600;
 }
 
+.agentic-prose {
+  max-width: 920px;
+  margin-inline: auto;
+  padding: 1.5rem clamp(0.75rem, 3vw, 2.5rem) 3rem;
+}
+
+.agentic-prose h1 {
+  margin: 0 0 1.5rem;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #0b1f3a 0%, #12345a 72%, #087f8c 140%);
+  color: white;
+  padding: clamp(1.5rem, 5vw, 3.25rem);
+  font-size: clamp(1.65rem, 4vw, 2.65rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  box-shadow: 0 18px 45px rgb(8 25 48 / 16%);
+}
+
+.agentic-prose h2 {
+  margin-top: 2.25rem;
+  border-bottom: 2px solid color-mix(in srgb, var(--primary) 65%, transparent);
+  padding-bottom: 0.45rem;
+  color: var(--foreground);
+  font-size: 1.42rem;
+  letter-spacing: -0.02em;
+}
+
+.agentic-prose h3 {
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.agentic-prose blockquote {
+  border: 1px solid color-mix(in srgb, var(--primary) 32%, var(--border));
+  border-left: 4px solid var(--primary);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  padding: 0.85rem 1rem;
+  color: var(--foreground);
+}
+
+.agentic-prose table {
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.agentic-prose th {
+  border-color: #243b56;
+  background: #0b1f3a;
+  color: white;
+  font-size: 0.76rem;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.agentic-prose td {
+  background: var(--surface);
+}
+
 .mindraft-prose ul[data-type="taskList"] {
   list-style: none;
   padding-left: 0.15rem;

@@ -10,6 +10,8 @@ import {
   Settings,
   Star,
   CalendarCheck,
+  GitBranch,
+  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -26,6 +28,8 @@ export const PRIMARY_NAV: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: Inbox, badge: "inbox" },
   { href: "/ideas", label: "Idee", icon: Lightbulb },
   { href: "/projects", label: "Progetti", icon: FolderKanban },
+  { href: "/subprojects", label: "Sottoprogetti", icon: GitBranch },
+  { href: "/tools", label: "Strumenti", icon: Wrench },
   { href: "/map", label: "Mappa globale", icon: Network },
   { href: "/tasks", label: "Attività", icon: CheckSquare, badge: "tasks" },
   { href: "/search", label: "Ricerca", icon: Search },

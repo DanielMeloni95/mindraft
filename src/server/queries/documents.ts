@@ -7,12 +7,14 @@ export async function getProjectDocument(
   supabase: Supabase,
   workspaceId: string,
   projectId: string,
+  kind: "document" | "agentic" = "document",
 ): Promise<DocumentRow | null> {
   const { data, error } = await supabase
     .from("documents")
     .select("*")
     .eq("workspace_id", workspaceId)
     .eq("project_id", projectId)
+    .eq("kind", kind)
     .is("deleted_at", null)
     .maybeSingle();
 

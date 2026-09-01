@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
     if (project.problem) lines.push("**Problema**", "", project.problem, "");
     if (project.solution) lines.push("**Soluzione**", "", project.solution, "");
 
-    const document = (documents ?? []).find((doc) => doc.project_id === project.id);
+    const document = (documents ?? []).find((doc) => doc.project_id === project.id && doc.kind === "document");
     if (document) {
       lines.push("**Documento**", "", docToMarkdown(document.content), "");
     }
