@@ -1,13 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { projectToAgenticMarkdown } from "@/lib/domain/agentic-document";
+import { markdownToPdf } from "@/lib/export/simple-pdf";
 import { getProject } from "@/server/queries/projects";
 import { requireSession } from "@/server/session";
 import type { CanvasNodeRow } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
   const detail = await getProject(session.supabase, session.workspace.id, id);
@@ -34,6 +35,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     children: children ?? [],
   });
   const slug = detail.project.name.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").toLowerCase();
+  if (request.nextUrl.searchParams.get("format") === "pdf") {
+    const pdf = markdownToPdf(markdown);
+    return new NextResponse(Uint8Array.from(pdf).buffer, { headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${slug || "progetto"}-agentico.pdf"`,
+      "Cache-Control": "no-store",
+    }});
+  }
   return new NextResponse(markdown, { headers: {
     "Content-Type": "text/markdown; charset=utf-8",
     "Content-Disposition": `attachment; filename="${slug || "progetto"}-agentico.md"`,

@@ -24,6 +24,7 @@ import { extractTasksAction } from "@/server/actions/ai";
 import { createTaskAction } from "@/server/actions/tasks";
 import {
   regenerateAgenticTemplateAction,
+  importAgenticPdfAction,
   restoreDocumentVersionAction,
   snapshotDocumentAction,
 } from "@/server/actions/documents";
@@ -92,12 +93,26 @@ export function DocumentWorkspace({
             <input
               ref={importRef}
               type="file"
-              accept=".md,.markdown,.txt,text/plain,text/markdown"
+              accept=".pdf,.md,.markdown,.txt,application/pdf,text/plain,text/markdown"
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (!file) return;
                 startTransition(async () => {
+                  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+                    const formData = new FormData();
+                    formData.set("documentId", documentId);
+                    formData.set("file", file);
+                    const result = await importAgenticPdfAction(formData);
+                    if (!result.ok) toast.error(result.error);
+                    else {
+                      const synced = Object.values(result.data.entities).reduce((sum, value) => sum + value, 0);
+                      toast.success(`PDF importato: ${result.data.pages} pagine, ${result.data.nodes} nodi e ${synced} elementi sincronizzati`);
+                      router.refresh();
+                    }
+                    event.target.value = "";
+                    return;
+                  }
                   const text = await file.text();
                   const result = await previewAgenticImportAction({ documentId, markdown: text });
                   if (!result.ok) toast.error(result.error);
@@ -110,7 +125,7 @@ export function DocumentWorkspace({
               }}
             />
             <Button variant="secondary" size="sm" onClick={() => importRef.current?.click()} disabled={pending}>
-              <Upload /> Reimporta documento
+              <Upload /> Importa MD/PDF
             </Button>
           </>
         )}
@@ -191,6 +206,9 @@ export function DocumentWorkspace({
         {agentic && <Button variant="secondary" size="sm" asChild>
           <a href={`/api/projects/${projectId}/agentic-document`}><Download /> Scarica .md</a>
         </Button>}
+        {agentic && <Button variant="secondary" size="sm" asChild>
+          <a href={`/api/projects/${projectId}/agentic-document?format=pdf`}><Download /> Scarica PDF</a>
+        </Button>}
       </div>
 
       <ErrorBoundary fallbackMessage="L'editor non si è avviato. Ricarica la pagina: il documento è al sicuro sul server.">
@@ -205,7 +223,7 @@ export function DocumentWorkspace({
       </ErrorBoundary>
 
       {agentic && <p className="rounded-[var(--radius-md)] border border-border bg-surface-muted px-3 py-2 text-[12px] text-muted-foreground">
-        Le modifiche vengono salvate automaticamente. “Rigenera template” ripristina la struttura canonica e sincronizza i nodi principali del canvas; la versione precedente resta nella cronologia. “Aggiorna progetto” materializza obiettivi, roadmap, attività e canvas descritti nel documento.
+        Le modifiche vengono salvate automaticamente. Puoi importare Markdown o PDF ed esportare entrambi i formati. L’importazione PDF aggiorna il documento e sincronizza canvas, obiettivi, roadmap, attività, decisioni, rischi e risorse; la versione precedente resta nella cronologia.
       </p>}
 
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
