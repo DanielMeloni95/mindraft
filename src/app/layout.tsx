@@ -1,18 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Sora } from "next/font/google";
+import localFont from "next/font/local";
 
 import { Providers } from "@/components/common/providers";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
+const inter = localFont({
+  src: "./fonts/Inter-Variable.ttf",
+  weight: "100 900",
   variable: "--font-inter",
   display: "swap",
 });
 
-const sora = Sora({
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+const sora = localFont({
+  src: "./fonts/Sora-Variable.ttf",
+  weight: "100 800",
   variable: "--font-sora",
   display: "swap",
 });

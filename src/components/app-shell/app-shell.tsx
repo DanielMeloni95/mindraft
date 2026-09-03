@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/common/logo";
@@ -19,11 +19,13 @@ export function AppShell({
   session,
   counts,
   projects,
+  notificationCount,
   children,
 }: {
   session: SessionContext;
   counts: { inbox: number; tasks: number };
   projects: Array<{ id: string; name: string; emoji: string | null }>;
+  notificationCount: number;
   children: React.ReactNode;
 }) {
   const planName = PLANS[session.plan].name;
@@ -95,6 +97,12 @@ export function AppShell({
               </Link>
             </Button>
             <ThemeToggle compact />
+            <Button variant="ghost" size="icon-sm" asChild className="relative">
+              <Link href="/notifications" aria-label={`${notificationCount} notifiche non lette`}>
+                <Bell />
+                {notificationCount > 0 && <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 text-primary-foreground">{Math.min(notificationCount, 99)}</span>}
+              </Link>
+            </Button>
             <div className="hidden md:block">
               <QuickCapture projects={projects} variant="dialog" />
             </div>

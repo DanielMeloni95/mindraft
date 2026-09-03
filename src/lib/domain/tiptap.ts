@@ -147,6 +147,26 @@ export function textToDoc(text: string): TipTapNode {
   if (blocks.length === 0) return EMPTY_DOC;
 
   const content: TipTapNode[] = [];
+  const inlineMarkdown = (value: string): TipTapNode[] => {
+    const nodes: TipTapNode[] = [];
+    const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
+    let cursor = 0;
+    for (const match of value.matchAll(pattern)) {
+      const index = match.index ?? 0;
+      if (index > cursor) nodes.push({ type:"text", text:value.slice(cursor,index) });
+      const token = match[0];
+      if (token.startsWith("**")) nodes.push({ type:"text", text:token.slice(2,-2), marks:[{type:"bold"}] });
+      else if (token.startsWith("*")) nodes.push({ type:"text", text:token.slice(1,-1), marks:[{type:"italic"}] });
+      else if (token.startsWith("`")) nodes.push({ type:"text", text:token.slice(1,-1), marks:[{type:"code"}] });
+      else {
+        const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
+        if (link) nodes.push({ type:"text", text:link[1], marks:[{type:"link",attrs:{href:link[2]}}] });
+      }
+      cursor = index + token.length;
+    }
+    if (cursor < value.length) nodes.push({ type:"text", text:value.slice(cursor) });
+    return nodes.length ? nodes : [{ type:"text", text:value }];
+  };
 
   for (const raw of blocks) {
     const trimmed = raw.trim();
@@ -155,7 +175,7 @@ export function textToDoc(text: string): TipTapNode {
       content.push({
         type: "heading",
         attrs: { level: heading[1].length },
-        content: [{ type: "text", text: heading[2] }],
+        content: inlineMarkdown(heading[2]),
       });
       continue;
     }
@@ -169,7 +189,7 @@ export function textToDoc(text: string): TipTapNode {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "text", text: l.replace(/^\s*[-*]\s+/, "") }],
+              content: inlineMarkdown(l.replace(/^\s*[-*]\s+/, "")),
             },
           ],
         })),
@@ -179,7 +199,7 @@ export function textToDoc(text: string): TipTapNode {
 
     content.push({
       type: "paragraph",
-      content: [{ type: "text", text: trimmed.replace(/\n/g, " ") }],
+      content: inlineMarkdown(trimmed.replace(/\n/g, " ")),
     });
   }
 

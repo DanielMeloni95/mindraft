@@ -1,0 +1,3 @@
+"use client";import * as React from"react";import {useRouter}from"next/navigation";import {toast}from"sonner";import {Button}from"@/components/ui/button";import {acceptWorkspaceInvitationAction}from"@/server/actions/collaboration";
+export function AcceptInvitation({token}:{token:string}){const router=useRouter();const[pending,startTransition]=React.useTransition();return <Button variant="primary" loading={pending} onClick={()=>startTransition(async()=>{const r=await acceptWorkspaceInvitationAction(token);if(!r.ok)return void toast.error(r.error);toast.success("Invito accettato");router.push("/home");router.refresh();})}>Accetta invito</Button>}
+

@@ -171,6 +171,9 @@ export type UsageLedgerRow = {
   reference_id: string | null;
   metadata: Json;
   occurred_at: string;
+  state: "requested" | "reserved" | "consumed" | "refunded" | "failed" | null;
+  idempotency_key: string | null;
+  run_id: string | null;
 };
 
 export type FeatureFlagRow = Timestamps & {
@@ -311,6 +314,7 @@ export type GoalRow = Timestamps & {
   due_date: string | null;
   is_achieved: boolean;
   position: number;
+  revision: number;
   deleted_at: string | null;
 };
 
@@ -328,6 +332,7 @@ export type MilestoneRow = Timestamps & {
   progress: number;
   is_estimate: boolean;
   position: number;
+  revision: number;
   deleted_at: string | null;
 };
 
@@ -351,6 +356,7 @@ export type TaskRow = Timestamps & {
   origin_id: string | null;
   position: number;
   completed_at: string | null;
+  revision: number;
   deleted_at: string | null;
 };
 
@@ -374,6 +380,7 @@ export type DecisionRow = Timestamps & {
   status: DecisionStatus;
   decided_on: string | null;
   supersedes_id: string | null;
+  revision: number;
   deleted_at: string | null;
 };
 
@@ -387,6 +394,7 @@ export type RiskRow = Timestamps & {
   impact: SeverityLevel;
   mitigation: string | null;
   is_open: boolean;
+  revision: number;
   deleted_at: string | null;
 };
 
@@ -399,6 +407,7 @@ export type ResourceRow = Timestamps & {
   url: string | null;
   kind: "link" | "file" | "person" | "tool" | "budget" | "note";
   notes: string | null;
+  revision: number;
   deleted_at: string | null;
 };
 
@@ -429,6 +438,18 @@ export type CanvasNodeRow = Timestamps & {
   entity_type: EntityType | null;
   entity_id: string | null;
   data: Json;
+  revision: number;
+};
+
+export type CommentRow = Timestamps & { id:string; workspace_id:string; project_id:string; document_id:string|null; author_id:string; parent_id:string|null; body:string; deleted_at:string|null };
+export type CommentMentionRow = { comment_id:string; workspace_id:string; user_id:string; created_at:string; read_at:string|null };
+
+export type AgenticImportRow = {
+  id: string; workspace_id: string; project_id: string; document_id: string; created_by: string;
+  schema_version: string; source_revision: number; content_hash: string; idempotency_key: string;
+  status: "proposed" | "applied" | "rejected" | "conflict" | "failed" | "rolled_back";
+  merge_plan: Json; source_content: string; accepted_keys: string[]; undo_payload: Json | null; error_message: string | null;
+  applied_at: string | null; created_at: string;
 };
 
 export type CanvasEdgeRow = Timestamps & {
@@ -503,6 +524,12 @@ export type AiRunRow = Timestamps & {
   duration_ms: number | null;
   error_code: string | null;
   error_message: string | null;
+  prompt_template_version: string;
+  schema_version: string;
+  input_hash: string | null;
+  output_hash: string | null;
+  generation_config: Json;
+  idempotency_key: string | null;
 };
 
 export type AiProposalRow = Timestamps & {
@@ -612,6 +639,8 @@ export type Database = {
         WorkspaceInvitationRow,
         "workspace_id" | "email" | "invited_by"
       >;
+      comments: Table<CommentRow, "workspace_id" | "project_id" | "author_id" | "body">;
+      comment_mentions: Table<CommentMentionRow, "comment_id" | "workspace_id" | "user_id">;
       subscriptions: Table<SubscriptionRow, "workspace_id">;
       usage_ledger: Table<UsageLedgerRow, "workspace_id" | "kind" | "amount">;
       feature_flags: Table<FeatureFlagRow, "key">;
@@ -643,6 +672,7 @@ export type Database = {
       resources: Table<ResourceRow, "workspace_id" | "title">;
       canvases: Table<CanvasRow, "workspace_id">;
       canvas_nodes: Table<CanvasNodeRow, "workspace_id" | "canvas_id">;
+      agentic_imports: Table<AgenticImportRow, "workspace_id" | "project_id" | "document_id" | "created_by" | "schema_version" | "source_revision" | "content_hash" | "idempotency_key" | "status" | "source_content">;
       canvas_edges: Table<
         CanvasEdgeRow,
         "workspace_id" | "canvas_id" | "source_node_id" | "target_node_id"
@@ -740,6 +770,15 @@ export type Database = {
         };
         Returns: number;
       };
+      reserve_ai_credits: {
+        Args: { p_workspace_id: string; p_run_id: string; p_idempotency_key: string; p_amount: number; p_feature: string; p_monthly_limit: number };
+        Returns: number;
+      };
+      finalize_ai_credits: {
+        Args: { p_workspace_id: string; p_run_id: string; p_idempotency_key: string; p_outcome: "consumed" | "refunded" | "failed"; p_amount: number; p_reason?: string | null };
+        Returns: undefined;
+      };
+      accept_workspace_invitation: { Args: { p_token:string }; Returns:string };
       search_workspace: {
         Args: {
           p_workspace_id: string;

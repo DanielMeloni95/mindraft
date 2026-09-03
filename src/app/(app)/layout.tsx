@@ -21,10 +21,11 @@ export default async function AppLayout({
     redirect("/onboarding");
   }
 
-  const [inbox, tasks, projects] = await Promise.all([
+  const [inbox, tasks, projects, notifications] = await Promise.all([
     countUnprocessed(session.supabase, session.workspace.id),
     taskCounts(session.supabase, session.workspace.id),
     listProjectOptions(session.supabase, session.workspace.id),
+    session.supabase.from("notifications").select("id", { count: "exact", head: true }).eq("workspace_id", session.workspace.id).eq("user_id", session.userId).is("read_at", null),
   ]);
 
   return (
@@ -32,6 +33,7 @@ export default async function AppLayout({
       session={session}
       counts={{ inbox, tasks: tasks.overdue + tasks.today }}
       projects={projects}
+      notificationCount={notifications.count ?? 0}
     >
       {children}
     </AppShell>

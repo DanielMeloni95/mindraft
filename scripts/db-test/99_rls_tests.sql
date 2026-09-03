@@ -311,6 +311,31 @@ end $$;
 -- ------------------------------------------------------ AI credits
 do $$
 declare
+  v_run_id uuid := '99999999-0000-4000-8000-000000000009';
+  balance_once integer;
+  balance_twice integer;
+begin
+  insert into public.ai_runs (id, workspace_id, user_id, feature, provider, status, idempotency_key)
+  values (v_run_id, current_setting('test.ws_a')::uuid, current_setting('test.user_a')::uuid,
+    'agentic-test', 'mock', 'pending', 'agentic-credit-test-001');
+  balance_once := public.reserve_ai_credits(current_setting('test.ws_a')::uuid, v_run_id,
+    'agentic-credit-test-001', 3, 'agentic-test', 100);
+  balance_twice := public.reserve_ai_credits(current_setting('test.ws_a')::uuid, v_run_id,
+    'agentic-credit-test-001', 3, 'agentic-test', 100);
+  if balance_once <> balance_twice then raise exception 'FAIL: retry changed reserved balance'; end if;
+  if (select count(*) from public.usage_ledger ul where ul.run_id=v_run_id and ul.state='reserved') <> 1 then
+    raise exception 'FAIL: duplicate reservation event';
+  end if;
+  perform public.finalize_ai_credits(current_setting('test.ws_a')::uuid, v_run_id,
+    'agentic-credit-test-001', 'refunded', 3, 'provider_error');
+  if (select coalesce(sum(amount),0) from public.usage_ledger ul where ul.run_id=v_run_id) <> 0 then
+    raise exception 'FAIL: refund did not compensate reservation';
+  end if;
+  raise notice 'PASS  AI credit reservation is idempotent and refundable';
+end $$;
+
+do $$
+declare
   used integer;
   blocked boolean := false;
 begin

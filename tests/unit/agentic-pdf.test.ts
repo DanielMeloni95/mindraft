@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { agenticDocSectionTitles, agenticSectionCluster, buildAgenticStrategicMap, extractAgenticSectionTitles, pdfTextToAgenticDoc } from "@/lib/domain/agentic-template";
+import { agenticDocSectionTitles, agenticSectionCluster, buildAgenticStrategicMap, detectAgenticMapProfile, extractAgenticSectionTitles, pdfTextToAgenticDoc } from "@/lib/domain/agentic-template";
 
 const SAMPLE = `AI EDITORIAL FACTORY
 DOCUMENTO AGENTICO
@@ -18,6 +18,10 @@ Testo introduttivo della sezione.
 Monolite modulare.`;
 
 describe("importazione PDF agentico", () => {
+  it("seleziona la mappa specializzata tramite profilo dichiarativo", () => {
+    expect(detectAgenticMapProfile("Workflow Editorial Factory")).toBe("editorial_factory");
+    expect(detectAgenticMapProfile("Progetto generico")).toBeNull();
+  });
   it("ricostruisce titolo, sezioni, callout e liste", () => {
     const doc = pdfTextToAgenticDoc(SAMPLE);
     expect(doc.content?.map((node) => node.type)).toContain("heading");

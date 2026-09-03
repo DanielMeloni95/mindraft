@@ -15,6 +15,7 @@ const TABS = [
   { segment: "tasks", label: "Attività" },
   { segment: "decisions", label: "Decisioni" },
   { segment: "resources", label: "Risorse" },
+  { segment: "collaboration", label: "Collaborazione" },
   { segment: "history", label: "Cronologia" },
 ] as const;
 

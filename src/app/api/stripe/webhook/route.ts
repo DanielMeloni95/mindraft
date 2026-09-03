@@ -65,9 +65,8 @@ export async function POST(request: NextRequest) {
   try {
     await handleEvent(admin, event);
   } catch (error) {
-    // Leave the event row in place: Stripe retries, and the retry will
-    // be recognised as a duplicate. Investigate from the logs instead of
-    // letting a partial write through.
+    // Release the idempotency claim so Stripe can retry a transient failure.
+    await admin.from("stripe_events").delete().eq("id", event.id);
     console.error("[stripe] handler failed", event.type, (error as Error).message);
     return NextResponse.json({ error: "handler_failed" }, { status: 500 });
   }
@@ -82,6 +81,7 @@ type StripeEvent = {
     object: {
       id?: string;
       customer?: string;
+      subscription?: string;
       status?: string;
       cancel_at_period_end?: boolean;
       current_period_end?: number;
@@ -116,7 +116,14 @@ async function handleEvent(
   const workspaceId = object.metadata?.workspace_id;
 
   switch (event.type) {
-    case "checkout.session.completed":
+    case "checkout.session.completed": {
+      if (!workspaceId) return;
+      await admin.from("subscriptions").update({
+        stripe_customer_id: object.customer ?? null,
+        stripe_subscription_id: object.subscription ?? null,
+      }).eq("workspace_id", workspaceId);
+      return;
+    }
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       if (!workspaceId) return;

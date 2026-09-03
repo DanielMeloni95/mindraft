@@ -335,15 +335,30 @@ export type AgenticStrategicNode = {
   y: number;
 };
 
+/** Declarative routing: adding a specialised map never requires changing parser logic. */
+export const AGENTIC_MAP_PROFILES = [
+  {
+    id: "editorial_factory",
+    requiredSignals: ["editorial factory", "golden sample", "visual studio"],
+    minimumMatches: 1,
+  },
+] as const;
+
+export function detectAgenticMapProfile(text: string): string | null {
+  const normalized = text.toLocaleLowerCase("it");
+  return AGENTIC_MAP_PROFILES.find((profile) =>
+    profile.requiredSignals.filter((signal) => normalized.includes(signal)).length >= profile.minimumMatches,
+  )?.id ?? null;
+}
+
 /**
  * Builds the decision-oriented map used by the canvas. The document remains the
  * source of detail; the canvas deliberately exposes the few things needed to
  * understand and operate the project instead of mirroring its table of contents.
  */
 export function buildAgenticStrategicMap(text: string): AgenticStrategicNode[] {
-  const normalized = text.toLocaleLowerCase("it");
-  const editorialFactory = /editorial factory|golden sample|visual studio/.test(normalized);
-  if (!editorialFactory) {
+  const profile = detectAgenticMapProfile(text);
+  if (profile !== "editorial_factory") {
     return extractAgenticSectionTitles(text).map((label, index) => {
       const cluster = agenticSectionCluster(label);
       const style = agenticSectionNode(label);

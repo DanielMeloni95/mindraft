@@ -2058,3 +2058,153 @@ $$;
 -- from pg_tables
 -- where schemaname = 'public'
 -- order by tablename;
+-- Agentic sync v1.1 is applied by migrations/0016_agentic_sync_v11.sql.
+alter table public.goals add column if not exists revision integer not null default 1 check (revision > 0);
+alter table public.milestones add column if not exists revision integer not null default 1 check (revision > 0);
+alter table public.tasks add column if not exists revision integer not null default 1 check (revision > 0);
+alter table public.decisions add column if not exists revision integer not null default 1 check (revision > 0);
+alter table public.risks add column if not exists revision integer not null default 1 check (revision > 0);
+alter table public.resources add column if not exists revision integer not null default 1 check (revision > 0);
+alter table public.canvas_nodes add column if not exists revision integer not null default 1 check (revision > 0);
+create or replace function app.increment_entity_revision() returns trigger language plpgsql as $$
+begin
+  if row(new.*) is distinct from row(old.*) then new.revision := old.revision + 1; end if;
+  return new;
+end;
+$$;
+do $$ declare table_name text;
+begin
+  foreach table_name in array array['goals','milestones','tasks','decisions','risks','resources','canvas_nodes'] loop
+    execute format('drop trigger if exists %I_revision on public.%I', table_name, table_name);
+    execute format('create trigger %I_revision before update on public.%I for each row execute function app.increment_entity_revision()', table_name, table_name);
+  end loop;
+end $$;
+create table if not exists public.agentic_imports (
+  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  project_id uuid not null references public.projects(id) on delete cascade, document_id uuid not null references public.documents(id) on delete cascade,
+  created_by uuid not null references auth.users(id) on delete cascade, schema_version text not null, source_revision integer not null,
+  content_hash text not null, idempotency_key text not null, status text not null check (status in ('proposed','applied','rejected','conflict','failed','rolled_back')),
+  merge_plan jsonb not null default '{}'::jsonb, source_content text not null, accepted_keys text[] not null default '{}', undo_payload jsonb, error_message text,
+  applied_at timestamptz, created_at timestamptz not null default now(), unique(workspace_id,idempotency_key), unique(document_id,content_hash)
+);
+create index if not exists agentic_imports_project_idx on public.agentic_imports(project_id,created_at desc);
+alter table public.agentic_imports enable row level security;
+grant select,insert,update on public.agentic_imports to authenticated;
+drop policy if exists agentic_imports_select on public.agentic_imports;
+create policy agentic_imports_select on public.agentic_imports for select using (app.is_workspace_member(workspace_id));
+drop policy if exists agentic_imports_insert on public.agentic_imports;
+create policy agentic_imports_insert on public.agentic_imports for insert with check (app.can_write_workspace(workspace_id) and created_by=auth.uid());
+drop policy if exists agentic_imports_update on public.agentic_imports;
+create policy agentic_imports_update on public.agentic_imports for update using (app.can_write_workspace(workspace_id)) with check (app.can_write_workspace(workspace_id));
+revoke delete on public.agentic_imports from authenticated;
++-- AI credit lifecycle v1.1: append-only, transactional and idempotent.
+alter table public.ai_runs add column if not exists prompt_template_version text not null default '1.0';
+alter table public.ai_runs add column if not exists schema_version text not null default '1.0';
+alter table public.ai_runs add column if not exists input_hash text;
+alter table public.ai_runs add column if not exists output_hash text;
+alter table public.ai_runs add column if not exists generation_config jsonb not null default '{}'::jsonb;
+alter table public.ai_runs add column if not exists idempotency_key text;
+create unique index if not exists ai_runs_idempotency_idx on public.ai_runs(workspace_id, idempotency_key) where idempotency_key is not null;
+alter table public.usage_ledger add column if not exists state text;
+alter table public.usage_ledger add column if not exists idempotency_key text;
+alter table public.usage_ledger add column if not exists run_id uuid references public.ai_runs(id) on delete set null;
+alter table public.usage_ledger drop constraint if exists usage_ledger_state_check;
+alter table public.usage_ledger add constraint usage_ledger_state_check check (state is null or state in ('requested','reserved','consumed','refunded','failed'));
+create unique index if not exists usage_ledger_idempotent_state_idx on public.usage_ledger(workspace_id,idempotency_key,state) where idempotency_key is not null and state is not null;
+create or replace function public.reserve_ai_credits(
+  p_workspace_id uuid, p_run_id uuid, p_idempotency_key text, p_amount integer, p_feature text, p_monthly_limit integer
+) returns integer language plpgsql security definer set search_path=public,pg_temp as $$
+declare used integer;
+begin
+  if not app.can_write(p_workspace_id) then raise exception 'not allowed to spend credits in this workspace' using errcode='insufficient_privilege'; end if;
+  if p_amount < 0 or length(trim(p_idempotency_key)) < 8 then raise exception 'invalid credit reservation'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_workspace_id::text || ':' || date_trunc('month',now())::text, 0));
+  if exists(select 1 from public.usage_ledger where workspace_id=p_workspace_id and idempotency_key=p_idempotency_key and state='reserved') then
+    select coalesce(sum(amount),0) into used from public.usage_ledger where workspace_id=p_workspace_id and kind='ai_credits' and occurred_at>=date_trunc('month',now());
+    return used;
+  end if;
+  select coalesce(sum(amount),0) into used from public.usage_ledger where workspace_id=p_workspace_id and kind='ai_credits' and occurred_at>=date_trunc('month',now());
+  if p_monthly_limit >= 0 and used + p_amount > p_monthly_limit then raise exception 'AI credit limit reached (% / %)',used,p_monthly_limit using errcode='check_violation'; end if;
+  insert into public.usage_ledger(workspace_id,user_id,kind,amount,reference_type,reference_id,metadata,state,idempotency_key,run_id)
+  values(p_workspace_id,auth.uid(),'ai_credits',0,null,p_run_id,jsonb_build_object('feature',p_feature),'requested',p_idempotency_key,p_run_id)
+  on conflict do nothing;
+  insert into public.usage_ledger(workspace_id,user_id,kind,amount,reference_type,reference_id,metadata,state,idempotency_key,run_id)
+  values(p_workspace_id,auth.uid(),'ai_credits',p_amount,null,p_run_id,jsonb_build_object('feature',p_feature),'reserved',p_idempotency_key,p_run_id);
+  return used+p_amount;
+end; $$;
+create or replace function public.finalize_ai_credits(
+  p_workspace_id uuid, p_run_id uuid, p_idempotency_key text, p_outcome text, p_amount integer, p_reason text default null
+) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+declare event_amount integer := 0;
+begin
+  if not app.can_write(p_workspace_id) then raise exception 'not allowed' using errcode='insufficient_privilege'; end if;
+  if p_outcome not in ('consumed','refunded','failed') then raise exception 'invalid credit outcome'; end if;
+  if not exists(select 1 from public.usage_ledger where workspace_id=p_workspace_id and run_id=p_run_id and idempotency_key=p_idempotency_key and state='reserved') then raise exception 'reservation not found'; end if;
+  if p_outcome='refunded' then event_amount := -abs(p_amount); end if;
+  insert into public.usage_ledger(workspace_id,user_id,kind,amount,reference_type,reference_id,metadata,state,idempotency_key,run_id)
+  values(p_workspace_id,auth.uid(),'ai_credits',event_amount,null,p_run_id,jsonb_strip_nulls(jsonb_build_object('reason',p_reason)),p_outcome,p_idempotency_key,p_run_id)
+  on conflict do nothing;
+end; $$;
+revoke insert, update, delete on public.usage_ledger from authenticated;
+alter function public.charge_ai_credits(uuid,integer,text,integer) security definer;
+revoke all on function public.reserve_ai_credits(uuid,uuid,text,integer,text,integer) from public;
+revoke all on function public.finalize_ai_credits(uuid,uuid,text,text,integer,text) from public;
+grant execute on function public.reserve_ai_credits(uuid,uuid,text,integer,text,integer) to authenticated;
+grant execute on function public.finalize_ai_credits(uuid,uuid,text,text,integer,text) to authenticated;
+-- Real collaboration: project comments, mentions and secure invitation acceptance.
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  project_id uuid not null references public.projects(id) on delete cascade, document_id uuid references public.documents(id) on delete cascade,
+  author_id uuid not null references auth.users(id) on delete cascade, parent_id uuid references public.comments(id) on delete cascade,
+  body text not null check (char_length(trim(body)) between 1 and 5000), created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(), deleted_at timestamptz
+);
+create index if not exists comments_project_idx on public.comments(project_id,created_at) where deleted_at is null;
+create table if not exists public.comment_mentions (
+  comment_id uuid not null references public.comments(id) on delete cascade, workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade, created_at timestamptz not null default now(), read_at timestamptz,
+  primary key(comment_id,user_id)
+);
+select app.attach_touch_trigger('public.comments');
+grant select,insert,update,delete on public.comments,public.comment_mentions to authenticated;
+alter table public.comments enable row level security;
+drop policy if exists comments_select on public.comments;
+drop policy if exists comments_insert on public.comments;
+drop policy if exists comments_update on public.comments;
+drop policy if exists comments_delete on public.comments;
+create policy comments_select on public.comments for select using (app.is_member(workspace_id));
+create policy comments_insert on public.comments for insert with check (app.can_write(workspace_id) and author_id=auth.uid());
+create policy comments_update on public.comments for update using (author_id=auth.uid()) with check (author_id=auth.uid() and app.can_write(workspace_id));
+create policy comments_delete on public.comments for delete using (author_id=auth.uid() or app.can_admin(workspace_id));
+alter table public.comment_mentions enable row level security;
+drop policy if exists comment_mentions_select on public.comment_mentions;
+drop policy if exists comment_mentions_insert on public.comment_mentions;
+drop policy if exists comment_mentions_update on public.comment_mentions;
+create policy comment_mentions_select on public.comment_mentions for select using (app.is_member(workspace_id));
+create policy comment_mentions_insert on public.comment_mentions for insert with check (app.can_write(workspace_id));
+create policy comment_mentions_update on public.comment_mentions for update using (user_id=auth.uid()) with check (user_id=auth.uid());
+drop policy if exists notifications_mentions_insert on public.notifications;
+create policy notifications_mentions_insert on public.notifications for insert with check (
+  kind='mention' and app.can_write(workspace_id) and exists(
+    select 1 from public.workspace_members m where m.workspace_id=notifications.workspace_id and m.user_id=notifications.user_id
+  )
+);
+create or replace function public.accept_workspace_invitation(p_token text)
+returns uuid language plpgsql security definer set search_path=public,auth,pg_temp as $$
+declare invitation public.workspace_invitations%rowtype; uid uuid:=auth.uid(); user_email text;
+begin
+  if uid is null then raise exception 'not authenticated' using errcode='insufficient_privilege'; end if;
+  select lower(email) into user_email from auth.users where id=uid;
+  select * into invitation from public.workspace_invitations where token=p_token and accepted_at is null and expires_at>now() for update;
+  if invitation.id is null or lower(invitation.email)<>user_email then raise exception 'invitation invalid or expired' using errcode='insufficient_privilege'; end if;
+  insert into public.workspace_members(workspace_id,user_id,role,invited_by) values(invitation.workspace_id,uid,invitation.role,invitation.invited_by)
+  on conflict(workspace_id,user_id) do update set role=excluded.role, invited_by=excluded.invited_by;
+  update public.workspace_invitations set accepted_at=now() where id=invitation.id;
+  return invitation.workspace_id;
+end; $$;
+revoke all on function public.accept_workspace_invitation(text) from public;
+grant execute on function public.accept_workspace_invitation(text) to authenticated;
+do $$ begin
+  alter publication supabase_realtime add table public.comments;
+exception when duplicate_object then null; when undefined_object then null;
+end $$;

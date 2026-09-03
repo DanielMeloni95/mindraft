@@ -13,7 +13,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const detail = await getProject(session.supabase, session.workspace.id, id);
   if (!detail?.document) return new NextResponse("Progetto non trovato", { status: 404 });
   const [{ data: document }, { data: nodes }, { data: children }] = await Promise.all([
-    session.supabase.from("documents").select("content").eq("project_id", id).eq("kind", "agentic").is("deleted_at", null).maybeSingle(),
+    session.supabase.from("documents").select("id, content, revision").eq("project_id", id).eq("kind", "agentic").is("deleted_at", null).maybeSingle(),
     detail.canvasId
       ? session.supabase.from("canvas_nodes").select("*").eq("canvas_id", detail.canvasId).order("created_at")
       : Promise.resolve({ data: [] }),
@@ -21,10 +21,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   ]);
   const markdown = projectToAgenticMarkdown({
     project: detail.project,
+    documentId: document?.id ?? detail.document.id,
+    documentRevision: document?.revision ?? detail.document.revision,
     content: (document?.content ?? { type: "doc", content: [] }) as never,
     goals: detail.goals,
     milestones: detail.milestones,
     tasks: detail.tasks,
+    decisions: detail.decisions,
+    risks: detail.risks,
+    resources: detail.resources,
     canvasNodes: (nodes ?? []) as CanvasNodeRow[],
     children: children ?? [],
   });

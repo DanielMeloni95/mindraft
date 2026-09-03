@@ -3,7 +3,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Download, FileText, History, ListPlus, Network, RefreshCw, RotateCcw, Save, Upload } from "lucide-react";
+import { Download, FileText, History, ListPlus, RotateCcw, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { ErrorBoundary } from "@/components/common/error-boundary";
@@ -17,20 +17,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { applyAgenticImportAction, previewAgenticImportAction } from "@/server/actions/agentic-sync";
+import type { AgenticMergePlan, MergeOutcome } from "@/lib/domain/agentic-sync";
 import { extractTasksAction } from "@/server/actions/ai";
 import { createTaskAction } from "@/server/actions/tasks";
 import {
-  generateFromAgenticDocumentAction,
-  importAgenticPdfAction,
   regenerateAgenticTemplateAction,
   restoreDocumentVersionAction,
-  saveDocumentAction,
   snapshotDocumentAction,
-  syncAgenticCanvasAction,
 } from "@/server/actions/documents";
 import type { JSONContent } from "@tiptap/react";
 import type { ExtractTasksResult } from "@/lib/ai/schemas";
-import { docToPlainText, textToDoc, type TipTapNode } from "@/lib/domain/tiptap";
+import { docToPlainText, type TipTapNode } from "@/lib/domain/tiptap";
 
 export type JsonDoc = JSONContent;
 
@@ -76,6 +75,8 @@ export function DocumentWorkspace({
     (ExtractTasksResult & { provider: string }) | null
   >(null);
   const [pending, startTransition] = React.useTransition();
+  const [mergePreview, setMergePreview] = React.useState<{ importId: string; plan: AgenticMergePlan } | null>(null);
+  const [acceptedKeys, setAcceptedKeys] = React.useState<Set<string>>(new Set());
   const importRef = React.useRef<HTMLInputElement>(null);
 
   return (
@@ -91,68 +92,27 @@ export function DocumentWorkspace({
             <input
               ref={importRef}
               type="file"
-              accept=".pdf,.md,.markdown,.txt,application/pdf,text/plain,text/markdown"
+              accept=".md,.markdown,.txt,text/plain,text/markdown"
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (!file) return;
                 startTransition(async () => {
-                  if (file.type === "application/pdf" || file.name.toLocaleLowerCase().endsWith(".pdf")) {
-                    const formData = new FormData();
-                    formData.set("documentId", documentId);
-                    formData.set("file", file);
-                    const imported = await importAgenticPdfAction(formData);
-                    if (!imported.ok) toast.error(imported.error);
-                    else {
-                      const synced = Object.values(imported.data.entities).reduce((sum, count) => sum + count, 0);
-                      toast.success(`PDF importato: ${imported.data.pages} pagine, ${imported.data.nodes} nodi e ${synced} elementi di progetto sincronizzati`);
-                      router.refresh();
-                    }
-                    event.target.value = "";
-                    return;
-                  }
                   const text = await file.text();
-                  const content = textToDoc(text);
-                  const result = await saveDocumentAction({
-                    documentId,
-                    content,
-                    plainText: docToPlainText(content),
-                    baseRevision: initialRevision,
-                    snapshotLabel: `Importazione ${file.name}`,
-                  });
+                  const result = await previewAgenticImportAction({ documentId, markdown: text });
                   if (!result.ok) toast.error(result.error);
                   else {
-                    toast.success("Documento importato");
-                    router.refresh();
+                    setMergePreview(result.data);
+                    setAcceptedKeys(new Set(result.data.plan.operations.filter((op) => ["create", "update", "archive"].includes(op.outcome)).map((op) => op.key)));
                   }
                   event.target.value = "";
                 });
               }}
             />
             <Button variant="secondary" size="sm" onClick={() => importRef.current?.click()} disabled={pending}>
-              <Upload /> Importa PDF / testo
+              <Upload /> Reimporta documento
             </Button>
           </>
-        )}
-
-        {canWrite && agentic && (
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={pending}
-            onClick={() => startTransition(async () => {
-              const result = await syncAgenticCanvasAction(documentId);
-              if (!result.ok) {
-                toast.error(result.error);
-                return;
-              }
-              const synced = Object.values(result.data.entities).reduce((sum, count) => sum + count, 0);
-              toast.success(`Progetto sincronizzato: ${result.data.sections} sezioni e ${synced} nuovi elementi`);
-              router.refresh();
-            })}
-          >
-            <Network /> Sincronizza progetto
-          </Button>
         )}
 
         {canWrite && agentic && (
@@ -174,26 +134,6 @@ export function DocumentWorkspace({
             }}
           >
             <RotateCcw /> Rigenera template
-          </Button>
-        )}
-
-        {canWrite && agentic && (
-          <Button
-            variant="primary"
-            size="sm"
-            loading={pending}
-            onClick={() => startTransition(async () => {
-              const result = await generateFromAgenticDocumentAction(documentId);
-              if (!result.ok) {
-                toast.error(result.error);
-                return;
-              }
-              const { goals, milestones, tasks, nodes } = result.data;
-              toast.success(`Generati ${goals} obiettivi, ${milestones} milestone, ${tasks} attività e ${nodes} nodi`);
-              router.refresh();
-            })}
-          >
-            <RefreshCw /> Aggiorna progetto
           </Button>
         )}
 
@@ -322,6 +262,36 @@ export function DocumentWorkspace({
               ))}
             </ul>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mergePreview !== null} onOpenChange={(open) => { if (!open) setMergePreview(null); }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Anteprima sincronizzazione</DialogTitle>
+            <DialogDescription>Seleziona solo le modifiche da applicare. Conflitti, ID sconosciuti ed elementi non validi non vengono mai applicati automaticamente.</DialogDescription>
+          </DialogHeader>
+          {mergePreview?.plan.errors.map((error) => <p key={error} className="rounded-md bg-destructive/10 p-2 text-[12px] text-destructive">{error}</p>)}
+          <ul className="space-y-2">
+            {mergePreview?.plan.operations.map((operation) => {
+              const selectable = ["create", "update", "archive"].includes(operation.outcome);
+              const labels: Record<MergeOutcome, string> = { create:"CREATE", update:"UPDATE", conflict:"CONFLICT", archive:"ARCHIVE", "no-op":"NO-OP", invalid:"INVALID", review:"REVIEW" };
+              return <li key={operation.key} className="flex items-start gap-3 rounded-md border border-border p-3">
+                <Checkbox checked={acceptedKeys.has(operation.key)} disabled={!selectable} onCheckedChange={(checked) => setAcceptedKeys((current) => { const next = new Set(current); if (checked) next.add(operation.key); else next.delete(operation.key); return next; })} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2 text-[13px] font-medium"><span>{labels[operation.outcome]}</span><span>{operation.imported?.title ?? "Documento"}</span></span>
+                  <span className="block text-[12px] text-muted-foreground">{operation.reason}</span>
+                  {operation.outcome === "conflict" && <span className="mt-1 block text-[11px] text-muted-foreground">Mindraft: {operation.current?.title} · Importato: {operation.imported?.title}</span>}
+                </span>
+              </li>;
+            })}
+          </ul>
+          <Button variant="primary" disabled={!mergePreview?.plan.valid || acceptedKeys.size === 0} loading={pending} onClick={() => startTransition(async () => {
+            if (!mergePreview) return;
+            const result = await applyAgenticImportAction({ importId: mergePreview.importId, acceptedKeys:[...acceptedKeys] });
+            if (!result.ok) return void toast.error(result.error);
+            toast.success(`${result.data.applied} modifiche applicate`); setMergePreview(null); router.refresh();
+          })}>Applica {acceptedKeys.size} modifiche approvate</Button>
         </DialogContent>
       </Dialog>
 

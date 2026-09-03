@@ -27,7 +27,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       ideas: 100,
       aiCreditsPerMonth: 40,
       storageMb: 100,
-      members: 1,
+      members: 3,
     },
     features: [
       "Inbox e idee senza limiti pratici",
@@ -52,6 +52,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       "25 progetti",
       "400 crediti AI al mese",
       "Cronologia documenti estesa",
+      "Collaborazione fino a 3 membri",
       "Revisione settimanale guidata",
     ],
   },
@@ -65,13 +66,14 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       ideas: -1,
       aiCreditsPerMonth: 1500,
       storageMb: 10000,
-      members: 1,
+      members: 10,
     },
     features: [
       "Progetti illimitati",
       "1500 crediti AI al mese",
       "Grafo globale avanzato",
       "Esportazione PDF di progetto",
+      "Collaborazione fino a 10 membri",
     ],
   },
   team: {

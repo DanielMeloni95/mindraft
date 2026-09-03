@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { BillingActions, CustomerPortalButton } from "@/components/settings/billing-actions";
 import { PLANS } from "@/lib/domain/plans";
 import { getStripeConfig } from "@/lib/env";
 import { requireSession } from "@/server/session";
@@ -15,6 +16,8 @@ export default async function BillingPage() {
   const session = await requireSession();
   const stripe = getStripeConfig();
   const plan = PLANS[session.plan];
+  const { data: subscription } = await session.supabase.from("subscriptions").select("stripe_customer_id,status,current_period_end,cancel_at_period_end").eq("workspace_id",session.workspace.id).maybeSingle();
+  const canManage = session.role === "owner" || session.role === "admin";
 
   const [{ count: projectCount }, { count: ideaCount }] = await Promise.all([
     session.supabase
@@ -103,6 +106,7 @@ export default async function BillingPage() {
                   {option.tier === session.plan && (
                     <p className="mt-2 text-[12px] font-medium text-primary">Piano attuale</p>
                   )}
+                  <BillingActions plan={option.tier} currentPlan={session.plan} hasCustomer={Boolean(subscription?.stripe_customer_id)} enabled={stripe.enabled && Boolean(stripe.prices[option.tier])} canManage={canManage} />
                 </li>
               ))}
             </ul>
@@ -119,6 +123,11 @@ export default async function BillingPage() {
                 </>
               )}
             </div>
+
+            {subscription?.stripe_customer_id && <div className="mt-3 space-y-2 rounded-[var(--radius-md)] border border-border p-3 text-[12px] text-muted-foreground">
+              <p>Abbonamento Stripe: <strong className="text-foreground">{subscription.status}</strong>{subscription.current_period_end ? ` · rinnovo ${new Date(subscription.current_period_end).toLocaleDateString("it-IT")}` : ""}{subscription.cancel_at_period_end ? " · cancellazione programmata" : ""}</p>
+              <CustomerPortalButton enabled={stripe.enabled} canManage={canManage} />
+            </div>}
 
             <Button variant="ghost" size="sm" className="mt-3" asChild>
               <Link href="/settings/data">Esporta i tuoi dati</Link>

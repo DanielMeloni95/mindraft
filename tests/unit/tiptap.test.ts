@@ -90,6 +90,13 @@ describe("textToDoc", () => {
     const original = "Un paragrafo semplice.";
     expect(docToPlainText(textToDoc(original))).toBe(original);
   });
+
+  it("round-trips the supported heading, list, emphasis, code and link subset", () => {
+    const markdown = docToMarkdown(DOC);
+    expect(docToMarkdown(textToDoc(markdown))).toBe(markdown);
+    const inline = "**forte** *corsivo* `codice` [link](https://example.com)";
+    expect(docToMarkdown(textToDoc(inline))).toBe(inline);
+  });
 });
 
 describe("sectionsToDoc", () => {

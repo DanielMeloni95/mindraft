@@ -1,13 +1,19 @@
 import { docToMarkdown, type TipTapNode } from "@/lib/domain/tiptap";
 import { agenticTemplateMarkdown } from "@/lib/domain/agentic-template";
-import type { CanvasNodeRow, GoalRow, MilestoneRow, ProjectRow, TaskRow } from "@/types/database";
+import { AGENTIC_SCHEMA_VERSION, managedAgenticBlock, type AgenticEntity } from "@/lib/domain/agentic-sync";
+import type { CanvasNodeRow, DecisionRow, GoalRow, MilestoneRow, ProjectRow, ResourceRow, RiskRow, TaskRow } from "@/types/database";
 
 export type AgenticProjectSnapshot = {
   project: ProjectRow;
+  documentId: string;
+  documentRevision: number;
   content: TipTapNode;
   goals: GoalRow[];
   milestones: MilestoneRow[];
   tasks: TaskRow[];
+  decisions: DecisionRow[];
+  risks: RiskRow[];
+  resources: ResourceRow[];
   canvasNodes: CanvasNodeRow[];
   children?: Array<Pick<ProjectRow, "id" | "name" | "status" | "progress">>;
 };
@@ -38,5 +44,21 @@ export function projectToAgenticMarkdown(snapshot: AgenticProjectSnapshot): stri
   if (snapshot.children?.length) {
     lines.push("", "### Sottoprogetti", "", ...snapshot.children.map((p) => `- ${p.name} — ${p.status}, ${p.progress}%`));
   }
+  const entities: AgenticEntity[] = [
+    ...snapshot.goals.map((row) => ({ id: row.id, entity_type: "goal" as const, revision: row.revision, title: row.title, description: row.description ?? undefined, status: row.is_achieved ? "achieved" : "open" })),
+    ...snapshot.milestones.map((row) => ({ id: row.id, entity_type: "milestone" as const, revision: row.revision, title: row.title, description: row.description ?? undefined, status: row.status })),
+    ...snapshot.tasks.map((row) => ({ id: row.id, entity_type: "task" as const, revision: row.revision, title: row.title, description: row.description ?? undefined, status: row.status, priority: row.priority })),
+    ...snapshot.decisions.map((row) => ({ id: row.id, entity_type: "decision" as const, revision: row.revision, title: row.title, description: row.context ?? undefined, status: row.status })),
+    ...snapshot.risks.map((row) => ({ id: row.id, entity_type: "risk" as const, revision: row.revision, title: row.title, description: row.description ?? undefined, status: row.is_open ? "open" : "closed" })),
+    ...snapshot.resources.map((row) => ({ id: row.id, entity_type: "resource" as const, revision: row.revision, title: row.title, description: row.notes ?? undefined, status: row.kind })),
+    ...snapshot.canvasNodes.map((row) => ({ id: row.id, entity_type: "canvas_node" as const, revision: row.revision, title: row.label, description: row.body ?? undefined, status: row.type })),
+  ];
+  lines.push("", "## Stato sincronizzato", "", managedAgenticBlock({
+    schema_version: AGENTIC_SCHEMA_VERSION,
+    project_id: project.id,
+    document_id: snapshot.documentId,
+    document_revision: snapshot.documentRevision,
+    exported_at: new Date().toISOString(),
+  }, entities));
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
