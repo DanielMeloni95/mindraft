@@ -564,6 +564,9 @@ create table if not exists public.projects (
   solution text,
   audience text,
   value_proposition text,
+  -- Short life/work area label ("Lavoro", "Sport"): groups projects on the global map.
+  context_scope text check (context_scope is null or char_length(trim(context_scope)) between 1 and 80),
+  tool_kind text check (tool_kind is null or tool_kind in ('tool','application','extension','markjs','api','library','service')),
   scope_in text,
   scope_out text,
   status public.project_status not null default 'idea',
@@ -2091,11 +2094,11 @@ create index if not exists agentic_imports_project_idx on public.agentic_imports
 alter table public.agentic_imports enable row level security;
 grant select,insert,update on public.agentic_imports to authenticated;
 drop policy if exists agentic_imports_select on public.agentic_imports;
-create policy agentic_imports_select on public.agentic_imports for select using (app.is_workspace_member(workspace_id));
+create policy agentic_imports_select on public.agentic_imports for select using (app.is_member(workspace_id));
 drop policy if exists agentic_imports_insert on public.agentic_imports;
-create policy agentic_imports_insert on public.agentic_imports for insert with check (app.can_write_workspace(workspace_id) and created_by=auth.uid());
+create policy agentic_imports_insert on public.agentic_imports for insert with check (app.can_write(workspace_id) and created_by=auth.uid());
 drop policy if exists agentic_imports_update on public.agentic_imports;
-create policy agentic_imports_update on public.agentic_imports for update using (app.can_write_workspace(workspace_id)) with check (app.can_write_workspace(workspace_id));
+create policy agentic_imports_update on public.agentic_imports for update using (app.can_write(workspace_id)) with check (app.can_write(workspace_id));
 revoke delete on public.agentic_imports from authenticated;
 +-- AI credit lifecycle v1.1: append-only, transactional and idempotent.
 alter table public.ai_runs add column if not exists prompt_template_version text not null default '1.0';
@@ -2208,3 +2211,28 @@ do $$ begin
   alter publication supabase_realtime add table public.comments;
 exception when duplicate_object then null; when undefined_object then null;
 end $$;
+
+-- Backfill the owner node for canvases created before project canvas roots were mandatory.
+insert into public.canvas_nodes (
+  workspace_id, canvas_id, type, label, position_x, position_y,
+  entity_type, entity_id, data
+)
+select p.workspace_id, c.id, 'project', p.name, 0, 0, 'project', p.id,
+  jsonb_build_object(
+    'icon', coalesce(p.emoji, '🧩'),
+    'variant', case
+      when exists (select 1 from public.canvas_nodes n where n.entity_type='project' and n.entity_id=p.id and n.data->>'variant'='tool') then 'tool'
+      when p.parent_project_id is not null then 'subproject'
+      else 'project'
+    end,
+    'root', true
+  )
+from public.canvases c join public.projects p on p.id=c.project_id
+where c.deleted_at is null and not exists (
+  select 1 from public.canvas_nodes n where n.canvas_id=c.id and n.entity_type='project' and n.entity_id=p.id
+);
+
+update public.canvas_nodes node
+set data=coalesce(node.data,'{}'::jsonb)||jsonb_build_object('root',true)
+from public.canvases canvas
+where node.canvas_id=canvas.id and node.entity_type='project' and node.entity_id=canvas.project_id;

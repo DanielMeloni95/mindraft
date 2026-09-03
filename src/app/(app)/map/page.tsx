@@ -26,7 +26,7 @@ export default async function MapPage() {
           description="La mappa si popola da sola man mano che catturi idee e le trasformi in progetti."
         />
       ) : (
-        <GlobalGraphClient data={data} />
+        <GlobalGraphClient data={data} workspaceId={session.workspace.id} canWrite={session.canWrite} />
       )}
     </>
   );

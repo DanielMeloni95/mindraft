@@ -152,6 +152,8 @@ export const projectCreateSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Colore non valido").optional(),
   sourceIdeaId: uuid.optional(),
   parentProjectId: uuid.optional(),
+  contextScope: z.string().trim().max(80).optional(),
+  websiteUrl: z.string().trim().url("Link non valido").max(2_048).optional().or(z.literal("").transform(() => undefined)),
   status: projectStatusEnum.optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
@@ -169,6 +171,8 @@ export const projectUpdateSchema = z.object({
   valueProposition: z.string().trim().max(2_000).nullable().optional(),
   websiteUrl: z.string().trim().url("Link non valido").max(2_048).nullable().optional(),
   domain: z.string().trim().max(253).regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i, "Dominio non valido").nullable().optional(),
+  contextScope: z.string().trim().max(80).nullable().optional(),
+  toolKind: z.enum(["tool", "application", "extension", "markjs", "api", "library", "service"]).nullable().optional(),
   scopeIn: z.string().trim().max(4_000).nullable().optional(),
   scopeOut: z.string().trim().max(4_000).nullable().optional(),
   status: projectStatusEnum.optional(),
@@ -297,6 +301,8 @@ export const canvasNodeCreateSchema = z.object({
   body: z.string().trim().max(4_000).optional(),
   icon: z.string().trim().max(32).optional(),
   variant: z.enum(["default", "subproject", "tool"]).optional(),
+  websiteUrl: z.string().trim().url("Link non valido").max(2_048).optional().or(z.literal("").transform(() => undefined)),
+  toolKind: z.enum(["tool", "application", "extension", "markjs", "api", "library", "service"]).optional(),
   positionX: z.number(),
   positionY: z.number(),
 });

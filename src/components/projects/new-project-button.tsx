@@ -32,6 +32,8 @@ export function NewProjectButton({
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [emoji, setEmoji] = React.useState("🧩");
+  const [contextScope, setContextScope] = React.useState("");
+  const [websiteUrl, setWebsiteUrl] = React.useState("");
   const [pending, startTransition] = React.useTransition();
   const [errors, setErrors] = React.useState<Record<string, string[]>>({});
 
@@ -78,6 +80,12 @@ export function NewProjectButton({
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="project-context-scope">Ambito</Label>
+            <Input id="project-context-scope" list="project-scope-options" value={contextScope} onChange={(event) => setContextScope(event.target.value)} placeholder="Lavoro, personale, sport…" />
+            <datalist id="project-scope-options"><option value="Lavoro" /><option value="Personale" /><option value="Sport" /><option value="Studio" /><option value="Salute" /><option value="Finanze" /><option value="Creatività" /></datalist>
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="project-description">Descrizione breve</Label>
             <Textarea
               id="project-description"
@@ -86,6 +94,18 @@ export function NewProjectButton({
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Una riga per ricordarti di cosa si tratta."
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="project-url">URL</Label>
+            <Input
+              id="project-url"
+              type="url"
+              value={websiteUrl}
+              onChange={(event) => setWebsiteUrl(event.target.value)}
+              placeholder="https://esempio.it"
+              aria-invalid={Boolean(errors.websiteUrl)}
+            />
+            {errors.websiteUrl && <p className="text-[12px] text-danger">{errors.websiteUrl[0]}</p>}
           </div>
         </div>
 
@@ -104,6 +124,8 @@ export function NewProjectButton({
                   shortDescription: description.trim() || undefined,
                   emoji: emoji.trim() || undefined,
                   parentProjectId,
+                  contextScope: contextScope.trim() || undefined,
+                  websiteUrl: websiteUrl.trim() || undefined,
                 });
 
                 if (!result.ok) {
@@ -115,6 +137,8 @@ export function NewProjectButton({
                 setOpen(false);
                 setName("");
                 setDescription("");
+                setContextScope("");
+                setWebsiteUrl("");
                 router.push(`/projects/${result.data.id}`);
               })
             }

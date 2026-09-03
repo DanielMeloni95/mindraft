@@ -2,6 +2,7 @@ import { docToMarkdown, type TipTapNode } from "@/lib/domain/tiptap";
 import { agenticTemplateMarkdown } from "@/lib/domain/agentic-template";
 import { AGENTIC_SCHEMA_VERSION, managedAgenticBlock, type AgenticEntity } from "@/lib/domain/agentic-sync";
 import type { CanvasNodeRow, DecisionRow, GoalRow, MilestoneRow, ProjectRow, ResourceRow, RiskRow, TaskRow } from "@/types/database";
+import { toolKindLabel } from "@/lib/domain/tool-kinds";
 
 export type AgenticProjectSnapshot = {
   project: ProjectRow;
@@ -27,6 +28,8 @@ export function projectToAgenticMarkdown(snapshot: AgenticProjectSnapshot): stri
     `> Stato: ${project.status} · Salute: ${project.health} · Avanzamento: ${project.progress}%`,
   ];
   if (project.next_step) lines.push(`> Prossimo passo: ${project.next_step}`);
+  if (project.scope_in) lines.push(`> Ambito: ${project.scope_in}`);
+  if (project.tool_kind) lines.push(`> Tipo strumento: ${toolKindLabel(project.tool_kind)}`);
   if (project.vision || project.problem || project.solution) {
     lines.push("", "### Sintesi corrente", "");
     if (project.vision) lines.push(`- Visione: ${project.vision}`);

@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Progress } from "@/components/ui/progress";
 import { PROJECT_STATUS_MAP } from "@/lib/domain/constants";
+import { toolKindLabel } from "@/lib/domain/tool-kinds";
 import { listProjectOptions, listToolProjects } from "@/server/queries/projects";
 import { requireSession } from "@/server/session";
 
@@ -29,7 +30,7 @@ export default async function ToolsPage() {
           <div className="flex items-start gap-2.5"><span className="text-2xl">{tool.emoji ?? "🛠️"}</span>
             <div className="min-w-0 flex-1"><h2 className="truncate font-display text-sm font-semibold">{tool.name}</h2>
               {parent && <Link href={`/projects/${parent.id}/canvas`} className="text-[11px] text-muted-foreground hover:underline">Usato in {parent.name}</Link>}
-            </div><StatusBadge descriptor={PROJECT_STATUS_MAP[tool.status]} /></div>
+            </div><span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{toolKindLabel(tool.tool_kind ?? "tool")}</span><StatusBadge descriptor={PROJECT_STATUS_MAP[tool.status]} /></div>
           {tool.short_description && <p className="mt-3 line-clamp-2 text-[12px] text-muted-foreground">{tool.short_description}</p>}
           <div className="mt-3 flex items-center gap-2"><Progress value={tool.progress} className="flex-1" /><span className="text-xs">{tool.progress}%</span></div>
           <div className="mt-3 flex items-center justify-between border-t border-border pt-3"><RelativeTime value={tool.last_activity_at} className="text-[11px] text-subtle-foreground" />

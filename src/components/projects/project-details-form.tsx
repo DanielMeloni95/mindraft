@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PROJECT_HEALTHS, PROJECT_STATUSES } from "@/lib/domain/constants";
+import { TOOL_KINDS } from "@/lib/domain/tool-kinds";
 import { updateProjectAction } from "@/server/actions/projects";
 import type { ProjectRow } from "@/types/database";
 
@@ -62,6 +63,12 @@ export function ProjectDetailsForm({ project }: { project: ProjectRow }) {
       </summary>
 
       <div className="space-y-4 border-t border-border p-4">
+        {project.tool_kind && <div className="space-y-1.5">
+          <Label htmlFor="project-tool-kind">Tipo di strumento</Label>
+          <select id="project-tool-kind" value={project.tool_kind} onChange={(event) => void save({ toolKind: event.target.value })} className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-surface px-2 text-[13px] sm:max-w-xs">
+            {TOOL_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
+          </select>
+        </div>}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="project-status">Stato</Label>
@@ -112,6 +119,14 @@ export function ProjectDetailsForm({ project }: { project: ProjectRow }) {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="project-context-scope">Ambito</Label>
+            <Input id="project-context-scope" list="project-detail-scope-options" defaultValue={project.scope_in ?? ""} placeholder="Lavoro, personale, sport…" onBlur={(event) => {
+              const next = event.target.value.trim();
+              if (next !== (project.scope_in ?? "")) void save({ contextScope: next || null });
+            }} />
+            <datalist id="project-detail-scope-options"><option value="Lavoro" /><option value="Personale" /><option value="Sport" /><option value="Studio" /><option value="Salute" /><option value="Finanze" /><option value="Creatività" /></datalist>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="project-website-url">Link del progetto</Label>
             <div className="flex gap-2">

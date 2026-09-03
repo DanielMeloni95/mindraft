@@ -19,10 +19,10 @@ const GlobalGraph = dynamic(
   },
 );
 
-export function GlobalGraphClient({ data }: { data: GraphData }) {
+export function GlobalGraphClient({ data, workspaceId, canWrite }: { data: GraphData; workspaceId: string; canWrite: boolean }) {
   return (
     <ErrorBoundary fallbackMessage="Il grafo non si è aperto. I dati non sono stati toccati.">
-      <GlobalGraph data={data} />
+      <GlobalGraph data={data} workspaceId={workspaceId} canWrite={canWrite} />
     </ErrorBoundary>
   );
 }

@@ -5,6 +5,7 @@ import { buildAgenticTemplateDoc, type AgenticEntityKind } from "@/lib/domain/ag
 import { docToPlainText, EMPTY_DOC } from "@/lib/domain/tiptap";
 import type { SessionContext } from "@/server/session";
 import type { ProjectStatus } from "@/types/database";
+import type { ToolKind } from "@/lib/domain/tool-kinds";
 
 /**
  * Creates the project plus the three things that make it usable
@@ -23,6 +24,9 @@ export async function provisionProject(
     parentProjectId?: string | null;
     status?: ProjectStatus;
     entityKind?: AgenticEntityKind;
+    contextScope?: string | null;
+    websiteUrl?: string | null;
+    toolKind?: ToolKind | null;
   },
 ): Promise<{ projectId: string; documentId: string; canvasId: string }> {
   const { data: project, error } = await session.supabase
@@ -37,6 +41,9 @@ export async function provisionProject(
       source_idea_id: params.sourceIdeaId ?? null,
       parent_project_id: params.parentProjectId ?? null,
       status: params.status ?? "exploration",
+      context_scope: params.contextScope ?? null,
+      website_url: params.websiteUrl ?? null,
+      tool_kind: params.toolKind ?? null,
     })
     .select("id")
     .single();
@@ -94,8 +101,12 @@ export async function provisionProject(
     throw new Error("Progetto creato ma incompleto: riprova.");
   }
 
-  if (params.parentProjectId) {
-    const { error: rootNodeError } = await session.supabase.from("canvas_nodes").insert({
+  const rootVariant = params.entityKind === "tool"
+    ? "tool"
+    : params.entityKind === "subproject" || params.parentProjectId
+      ? "subproject"
+      : "project";
+  const { error: rootNodeError } = await session.supabase.from("canvas_nodes").insert({
       workspace_id: session.workspace.id,
       canvas_id: canvas.id,
       type: "project",
@@ -104,10 +115,9 @@ export async function provisionProject(
       position_y: 0,
       entity_type: "project",
       entity_id: project.id,
-      data: { icon: params.emoji ?? "🧩", variant: "subproject" },
+      data: { icon: params.emoji ?? "🧩", variant: rootVariant, root: true, ...(params.toolKind ? { toolKind: params.toolKind } : {}) },
     });
-    if (rootNodeError) throw new Error(`Nodo principale non creato: ${rootNodeError.message}`);
-  }
+  if (rootNodeError) throw new Error(`Nodo principale non creato: ${rootNodeError.message}`);
 
   return { projectId: project.id, documentId: document.id, canvasId: canvas.id };
 }
@@ -119,7 +129,7 @@ export async function inheritProjectContext(
   childProjectId: string,
 ): Promise<void> {
   const { data: parent } = await session.supabase.from("projects")
-    .select("stack, audience, color")
+    .select("stack, audience, color, context_scope")
     .eq("id", parentProjectId)
     .eq("workspace_id", session.workspace.id)
     .maybeSingle();
@@ -129,6 +139,7 @@ export async function inheritProjectContext(
     stack: parent.stack,
     audience: parent.audience,
     color: parent.color,
+    context_scope: parent.context_scope,
   }).eq("id", childProjectId).eq("workspace_id", session.workspace.id);
 
   const [{ data: tags }, { data: relations }] = await Promise.all([

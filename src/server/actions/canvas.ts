@@ -54,7 +54,7 @@ export async function createCanvasNodeAction(
         if ((count ?? 0) >= limit) return fail(`Hai raggiunto il limite di ${limit} progetti del piano ${PLANS[session.plan].name}.`);
       }
       const { data: parent } = await session.supabase.from("projects")
-        .select("id, stack, audience, color")
+        .select("id, stack, audience, color, context_scope")
         .eq("id", canvas.projectId).eq("workspace_id", session.workspace.id).maybeSingle();
       if (!parent) return fail("Progetto padre non trovato.");
 
@@ -65,10 +65,11 @@ export async function createCanvasNodeAction(
         color: parent.color,
         parentProjectId: parent.id,
         entityKind: "subproject",
+        websiteUrl: parsed.data.websiteUrl ?? null,
       });
       entityType = "project";
       entityId = created.projectId;
-      await session.supabase.from("projects").update({ stack: parent.stack, audience: parent.audience })
+      await session.supabase.from("projects").update({ stack: parent.stack, audience: parent.audience, context_scope: parent.context_scope })
         .eq("id", created.projectId).eq("workspace_id", session.workspace.id);
 
       const [{ data: tags }, { data: relations }] = await Promise.all([
@@ -109,6 +110,8 @@ export async function createCanvasNodeAction(
         emoji: parsed.data.icon ?? "🛠️",
         parentProjectId: canvas.projectId,
         entityKind: "tool",
+        websiteUrl: parsed.data.websiteUrl ?? null,
+        toolKind: parsed.data.toolKind ?? "tool",
       });
       await inheritProjectContext(session, canvas.projectId, created.projectId);
       entityType = "project";
@@ -126,6 +129,7 @@ export async function createCanvasNodeAction(
         shortDescription: parsed.data.body ?? null,
         emoji: parsed.data.icon ?? "📁",
         entityKind: "project",
+        websiteUrl: parsed.data.websiteUrl ?? null,
       });
       entityType = "project";
       entityId = created.projectId;
@@ -144,6 +148,7 @@ export async function createCanvasNodeAction(
         data: {
           icon: parsed.data.icon ?? null,
           variant: parsed.data.variant ?? "default",
+          ...(parsed.data.variant === "tool" ? { toolKind: parsed.data.toolKind ?? "tool" } : {}),
         } as Json,
         entity_type: entityType,
         entity_id: entityId,
@@ -317,6 +322,19 @@ export async function deleteCanvasNodeAction(
     if (!parsed.ok) return parsed.result;
 
     const session = await requireWriteSession();
+    // The owner node carries the project name and anchors the canvas: it goes
+    // away only when the project itself does.
+    const { data: node } = await session.supabase
+      .from("canvas_nodes")
+      .select("id, data")
+      .eq("id", parsed.data)
+      .eq("workspace_id", session.workspace.id)
+      .maybeSingle();
+    if (!node) return fail("Nodo non trovato.");
+    if ((node.data as { root?: boolean } | null)?.root === true) {
+      return fail("Il nodo di origine non si elimina: rappresenta il progetto stesso.");
+    }
+
     const { error } = await session.supabase
       .from("canvas_nodes")
       .delete()
@@ -324,6 +342,30 @@ export async function deleteCanvasNodeAction(
       .eq("workspace_id", session.workspace.id);
 
     if (error) return fail(`Nodo non eliminato: ${error.message}`);
+    return ok();
+  });
+}
+
+export async function archiveCanvasAction(
+  canvasId: string,
+  restore = false,
+): Promise<ActionResult<undefined>> {
+  return guard(async () => {
+    const parsed = parseInput(uuid, canvasId);
+    if (!parsed.ok) return parsed.result;
+    const session = await requireWriteSession();
+    const { data, error } = await session.supabase
+      .from("canvases")
+      .update({ deleted_at: restore ? null : new Date().toISOString() })
+      .eq("id", parsed.data)
+      .eq("workspace_id", session.workspace.id)
+      .select("project_id")
+      .maybeSingle();
+    if (error) return fail(`Canvas non eliminato: ${error.message}`);
+    if (!data) return fail("Canvas non trovato o non modificabile.");
+    if (data.project_id) revalidatePath(`/projects/${data.project_id}/canvas`);
+    revalidatePath("/archive");
+    revalidatePath("/map");
     return ok();
   });
 }

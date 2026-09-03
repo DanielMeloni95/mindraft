@@ -47,7 +47,7 @@ create table if not exists public.agentic_imports (
 create index if not exists agentic_imports_project_idx on public.agentic_imports(project_id, created_at desc);
 alter table public.agentic_imports enable row level security;
 grant select,insert,update on public.agentic_imports to authenticated;
-create policy agentic_imports_select on public.agentic_imports for select using (app.is_workspace_member(workspace_id));
-create policy agentic_imports_insert on public.agentic_imports for insert with check (app.can_write_workspace(workspace_id) and created_by = auth.uid());
-create policy agentic_imports_update on public.agentic_imports for update using (app.can_write_workspace(workspace_id)) with check (app.can_write_workspace(workspace_id));
+create policy agentic_imports_select on public.agentic_imports for select using (app.is_member(workspace_id));
+create policy agentic_imports_insert on public.agentic_imports for insert with check (app.can_write(workspace_id) and created_by = auth.uid());
+create policy agentic_imports_update on public.agentic_imports for update using (app.can_write(workspace_id)) with check (app.can_write(workspace_id));
 revoke delete on public.agentic_imports from authenticated;

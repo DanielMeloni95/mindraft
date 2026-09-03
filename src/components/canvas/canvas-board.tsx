@@ -46,6 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CANVAS_NODE_STYLES, RELATION_TYPES } from "@/lib/domain/constants";
+import { TOOL_KINDS, type ToolKind } from "@/lib/domain/tool-kinds";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   createCanvasEdgeAction,
@@ -143,13 +144,14 @@ const ADDABLE = NODE_CLUSTERS.flatMap((cluster) => cluster.nodes);
 
 const ICON_PRESETS = ["📁", "🧩", "🚀", "💡", "🎯", "⭐", "🔥", "✅", "🛠️", "📌", "🌱", "🎨", "💻", "📊", "❤️", "⚡"];
 
-function nodeMetadata(value: CanvasNodeRow["data"]): { icon: string | null; variant: NodeVariant; origin: string | null } {
-  if (!value || Array.isArray(value) || typeof value !== "object") return { icon: null, variant: "default", origin: null };
+function nodeMetadata(value: CanvasNodeRow["data"]): { icon: string | null; variant: NodeVariant; origin: string | null; root: boolean } {
+  if (!value || Array.isArray(value) || typeof value !== "object") return { icon: null, variant: "default", origin: null, root: false };
   const record = value as Record<string, unknown>;
   return {
     icon: typeof record.icon === "string" ? record.icon : null,
     variant: record.variant === "subproject" || record.variant === "tool" ? record.variant : "default",
     origin: typeof record.origin === "string" ? record.origin : null,
+    root: record.root === true,
   };
 }
 
@@ -162,6 +164,9 @@ function toFlowNodes(
     id: row.id,
     type: "mindraft" as const,
     position: { x: row.position_x, y: row.position_y },
+    // The owner node is the canvas origin: React Flow must not offer it for
+    // deletion, so neither the Delete key nor a selection sweep can take it.
+    deletable: !nodeMetadata(row.data).root,
     data: {
       ...nodeMetadata(row.data),
       color: row.color,
@@ -177,17 +182,27 @@ function toFlowNodes(
 }
 
 function toFlowEdges(rows: CanvasEdgeRow[]): MindraftEdge[] {
-  return rows.map((row) => ({
+  return rows.map((row) => {
+    // In storage, `part_of` follows the semantic direction child -> parent.
+    // In the canvas we render the operational direction parent -> child, so
+    // every hierarchy reads naturally from the highest level to the lowest.
+    const hierarchical = row.relation === "part_of";
+    const source = hierarchical ? row.target_node_id : row.source_node_id;
+    const target = hierarchical ? row.source_node_id : row.target_node_id;
+    const sourceHandle = hierarchical ? "bottom" : row.source_handle ?? "right";
+    const targetHandle = hierarchical ? "top" : row.target_handle ?? "left";
+    return {
     id: row.id,
-    source: row.source_node_id,
-    target: row.target_node_id,
-    sourceHandle: row.source_handle ?? (row.relation === "part_of" ? "top" : "right"),
-    targetHandle: row.target_handle ?? (row.relation === "part_of" ? "bottom" : "left"),
-    label: row.label || RELATION_TYPES.find((r) => r.value === row.relation)?.label,
+    source,
+    target,
+    sourceHandle,
+    targetHandle,
+    label: hierarchical && (!row.label || row.label === "È parte di")
+      ? "Contiene" : row.label || RELATION_TYPES.find((r) => r.value === row.relation)?.label,
     data: {
       relation: row.relation,
-      sourceHandle: row.source_handle ?? (row.relation === "part_of" ? "top" : "right"),
-      targetHandle: row.target_handle ?? (row.relation === "part_of" ? "bottom" : "left"),
+      sourceHandle,
+      targetHandle,
       routeStyle: row.route_style ?? "smoothstep",
       waypointX: row.waypoint_x ?? null,
       waypointY: row.waypoint_y ?? null,
@@ -201,7 +216,8 @@ function toFlowEdges(rows: CanvasEdgeRow[]): MindraftEdge[] {
     labelBgPadding: [6, 4] as [number, number],
     labelBgBorderRadius: 6,
     zIndex: 0,
-  }));
+  };
+  });
 }
 
 function CanvasInner({
@@ -230,6 +246,8 @@ function CanvasInner({
   const [nodeKind, setNodeKind] = React.useState<AddableNode>(ADDABLE[0]);
   const [nodeLabel, setNodeLabel] = React.useState("");
   const [nodeBody, setNodeBody] = React.useState("");
+  const [nodeUrl, setNodeUrl] = React.useState("");
+  const [toolKind, setToolKind] = React.useState<ToolKind>("tool");
   const [nodeIcon, setNodeIcon] = React.useState("📁");
   const [creatingNode, startCreatingNode] = React.useTransition();
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -477,6 +495,8 @@ function CanvasInner({
     setNodeKind(kind);
     setNodeLabel("");
     setNodeBody("");
+    setNodeUrl("");
+    setToolKind("tool");
     setNodeIcon(kind.icon);
     setDraftPosition(position ?? null);
     setNodeDialogOpen(true);
@@ -504,6 +524,8 @@ function CanvasInner({
         body: nodeBody.trim() || undefined,
         icon: nodeIcon.trim() || undefined,
         variant: nodeKind.variant ?? "default",
+        websiteUrl: nodeUrl.trim() || undefined,
+        toolKind: nodeKind.variant === "tool" ? toolKind : undefined,
         positionX: position.x,
         positionY: position.y,
       });
@@ -530,6 +552,7 @@ function CanvasInner({
       }]);
       setNodeDialogOpen(false);
       setDraftPosition(null);
+      setNodeUrl("");
       toast.success("Nodo inserito");
     });
   };
@@ -540,10 +563,10 @@ function CanvasInner({
     if (current.length === 0) return;
     const hierarchicalEdges = edges.filter((edge) =>
       (edge.data as { relation?: RelationType } | undefined)?.relation === "part_of");
-    const parentByChild = new Map(hierarchicalEdges.map((edge) => [edge.source, edge.target]));
+    const parentByChild = new Map(hierarchicalEdges.map((edge) => [edge.target, edge.source]));
     const children = new Map<string, string[]>();
     for (const edge of hierarchicalEdges) {
-      children.set(edge.target, [...(children.get(edge.target) ?? []), edge.source]);
+      children.set(edge.source, [...(children.get(edge.source) ?? []), edge.target]);
     }
     const positions = new Map<string, { x: number; y: number }>();
     let leaf = 0;
@@ -553,23 +576,38 @@ function CanvasInner({
       visiting.add(id);
       const nested = children.get(id) ?? [];
       for (const child of nested) place(child, depth + 1);
-      if (nested.length === 0) positions.set(id, { x: depth * 340, y: leaf++ * 145 });
+      if (nested.length === 0) positions.set(id, { x: leaf++ * 340, y: depth * 220 });
       else {
-        const ys = nested.map((child) => positions.get(child)?.y).filter((y): y is number => y !== undefined);
-        positions.set(id, { x: depth * 340, y: ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : leaf++ * 145 });
+        const xs = nested.map((child) => positions.get(child)?.x).filter((x): x is number => x !== undefined);
+        positions.set(id, { x: xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : leaf++ * 340, y: depth * 220 });
       }
       visiting.delete(id);
     };
-    const roots = current.filter((node) => !parentByChild.has(node.id));
+    // The owner node is the origin of the canvas, so it is laid out first and
+    // always ends up on the top row, whatever the rest of the graph looks like.
+    const owner = current.find((node) => node.data.root);
+    const roots = current
+      .filter((node) => !parentByChild.has(node.id))
+      .sort((a, b) => Number(Boolean(b.data.root)) - Number(Boolean(a.data.root)));
     if (hierarchicalEdges.length) {
       for (const root of roots) place(root.id, 0);
       for (const node of current) if (!positions.has(node.id)) place(node.id, 0);
+      const ownerY = owner ? positions.get(owner.id)?.y ?? 0 : 0;
+      if (owner && ownerY > 0) {
+        const shift = ownerY + 220;
+        for (const [id, point] of positions) {
+          if (id !== owner.id) positions.set(id, { x: point.x, y: point.y + shift });
+        }
+        positions.set(owner.id, { x: positions.get(owner.id)?.x ?? 0, y: 0 });
+      }
     } else {
-      const columns = Math.max(1, Math.ceil(Math.sqrt(current.length)));
-      current.forEach((node, index) => positions.set(node.id, {
+      const rest = current.filter((node) => node.id !== owner?.id);
+      const columns = Math.max(1, Math.ceil(Math.sqrt(Math.max(rest.length, 1))));
+      rest.forEach((node, index) => positions.set(node.id, {
         x: (index % columns) * 300,
-        y: Math.floor(index / columns) * 165,
+        y: 220 + Math.floor(index / columns) * 165,
       }));
+      if (owner) positions.set(owner.id, { x: ((columns - 1) * 300) / 2, y: 0 });
     }
     const next = current.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position }));
     setNodes(next);
@@ -615,11 +653,15 @@ function CanvasInner({
 
   const saveEdgeRouting = (reverse = false) => {
     if (!selectedEdge) return;
+    const hierarchical = (selectedEdge.data as { relation?: RelationType } | undefined)?.relation === "part_of";
+    if (hierarchical && reverse) return;
+    const sourceHandle = hierarchical ? "bottom" : edgeSourceHandle;
+    const targetHandle = hierarchical ? "top" : edgeTargetHandle;
     startSavingEdge(async () => {
       const result = await updateCanvasEdgeRoutingAction({
         id: selectedEdge.id,
-        sourceHandle: edgeSourceHandle,
-        targetHandle: edgeTargetHandle,
+        sourceHandle,
+        targetHandle,
         routeStyle: edgeRouteStyle,
         reverse,
       });
@@ -631,10 +673,10 @@ function CanvasInner({
         ...edge,
         source: reverse ? edge.target : edge.source,
         target: reverse ? edge.source : edge.target,
-        sourceHandle: edgeSourceHandle,
-        targetHandle: edgeTargetHandle,
+        sourceHandle,
+        targetHandle,
         type: "mindraft",
-        data: { ...edge.data, sourceHandle: edgeSourceHandle, targetHandle: edgeTargetHandle, routeStyle: edgeRouteStyle },
+        data: { ...edge.data, sourceHandle, targetHandle, routeStyle: edgeRouteStyle },
       } : edge));
       setEdgeSettingsOpen(false);
       toast.success(reverse ? "Direzione invertita" : "Percorso aggiornato");
@@ -767,21 +809,23 @@ function CanvasInner({
                           : "Rischio"}
                   </DropdownMenuItem>
                 ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  destructive
-                  onSelect={() =>
-                    void deleteCanvasNodeAction(selectedNode.id).then((result) => {
-                      if (!result.ok) toast.error(result.error);
-                      else {
-                        setNodes((current) => current.filter((node) => node.id !== selectedNode.id));
-                        setEdges((current) => current.filter((edge) => edge.source !== selectedNode.id && edge.target !== selectedNode.id));
-                      }
-                    })
-                  }
-                >
-                  <Trash2 /> Elimina nodo
-                </DropdownMenuItem>
+                {!selectedNode.data.root && <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    destructive
+                    onSelect={() =>
+                      void deleteCanvasNodeAction(selectedNode.id).then((result) => {
+                        if (!result.ok) toast.error(result.error);
+                        else {
+                          setNodes((current) => current.filter((node) => node.id !== selectedNode.id));
+                          setEdges((current) => current.filter((edge) => edge.source !== selectedNode.id && edge.target !== selectedNode.id));
+                        }
+                      })
+                    }
+                  >
+                    <Trash2 /> Elimina nodo
+                  </DropdownMenuItem>
+                </>}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -942,6 +986,26 @@ function CanvasInner({
                 placeholder="Dettagli facoltativi"
               />
             </div>
+            {(nodeKind.type === "project" || nodeKind.variant === "subproject" || nodeKind.variant === "tool") && (
+              <div className="space-y-1.5">
+                <Label htmlFor="canvas-node-url">URL</Label>
+                <Input
+                  id="canvas-node-url"
+                  type="url"
+                  value={nodeUrl}
+                  onChange={(event) => setNodeUrl(event.target.value)}
+                  placeholder="https://esempio.it"
+                />
+              </div>
+            )}
+            {nodeKind.variant === "tool" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="canvas-tool-kind">Tipo di strumento</Label>
+                <select id="canvas-tool-kind" value={toolKind} onChange={(event) => setToolKind(event.target.value as ToolKind)} className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-surface px-2 text-[13px]">
+                  {TOOL_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
+                </select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="canvas-node-icon">Emoji o sticker</Label>
               <div className="flex items-center gap-2">
@@ -1046,9 +1110,11 @@ function CanvasInner({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => saveEdgeRouting(true)} disabled={savingEdge}>
-              <ArrowLeftRight /> Inverti direzione
-            </Button>
+            {(selectedEdge?.data as { relation?: RelationType } | undefined)?.relation !== "part_of" && (
+              <Button variant="secondary" onClick={() => saveEdgeRouting(true)} disabled={savingEdge}>
+                <ArrowLeftRight /> Inverti direzione
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => setEdgeSettingsOpen(false)} disabled={savingEdge}>Annulla</Button>
             <Button variant="primary" onClick={() => saveEdgeRouting(false)} loading={savingEdge}>Salva percorso</Button>
           </DialogFooter>
@@ -1117,7 +1183,10 @@ function CanvasInner({
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={canWrite ? ["Backspace", "Delete"] : []}
         onNodesDelete={(deleted) => {
-          for (const node of deleted) void deleteCanvasNodeAction(node.id);
+          for (const node of deleted) {
+            if (node.data.root) continue;
+            void deleteCanvasNodeAction(node.id);
+          }
         }}
         className="h-full w-full"
         defaultEdgeOptions={{

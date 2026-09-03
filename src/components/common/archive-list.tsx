@@ -10,10 +10,11 @@ import { Button } from "@/components/ui/button";
 import { archiveIdeaAction } from "@/server/actions/ideas";
 import { archiveInboxItemAction } from "@/server/actions/inbox";
 import { archiveProjectAction } from "@/server/actions/projects";
+import { archiveCanvasAction } from "@/server/actions/canvas";
 
 export type ArchiveItem = {
   id: string;
-  kind: "idea" | "project" | "inbox";
+  kind: "idea" | "project" | "inbox" | "canvas";
   label: string;
   updatedAt: string;
 };
@@ -22,6 +23,7 @@ const KIND_LABEL: Record<ArchiveItem["kind"], string> = {
   idea: "Idea",
   project: "Progetto",
   inbox: "Inbox",
+  canvas: "Canvas",
 };
 
 export function ArchiveList({ items }: { items: ArchiveItem[] }) {
@@ -35,7 +37,9 @@ export function ArchiveList({ items }: { items: ArchiveItem[] }) {
           ? await archiveIdeaAction(item.id, true)
           : item.kind === "project"
             ? await archiveProjectAction(item.id, true)
-            : await archiveInboxItemAction(item.id, true);
+            : item.kind === "canvas"
+              ? await archiveCanvasAction(item.id, true)
+              : await archiveInboxItemAction(item.id, true);
 
       if (!result.ok) {
         toast.error(result.error);

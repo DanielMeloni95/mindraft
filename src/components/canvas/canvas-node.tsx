@@ -20,6 +20,8 @@ export type MindraftNodeData = {
   color: string | null;
   onRename: (id: string, label: string) => void;
   origin?: string | null;
+  /** The canvas owner node: it carries the project name and cannot be removed. */
+  root?: boolean;
 };
 
 export type MindraftNode = Node<MindraftNodeData, "mindraft">;
@@ -76,6 +78,11 @@ export function CanvasNodeCard({ id, data, selected }: NodeProps<MindraftNode>) 
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           {data.variant === "subproject" ? "Sottoprogetto" : data.variant === "tool" ? "Strumento" : style.label}
         </span>
+        {data.root && (
+          <span className="rounded-full border border-border bg-surface-muted px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Origine
+          </span>
+        )}
         {href && (
           <a
             href={href}

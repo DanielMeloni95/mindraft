@@ -10,7 +10,7 @@ export const metadata = { title: "Archivio" };
 export default async function ArchivePage() {
   const session = await requireSession();
 
-  const [{ data: ideas }, { data: projects }, { data: inbox }] = await Promise.all([
+  const [{ data: ideas }, { data: projects }, { data: inbox }, { data: canvases }] = await Promise.all([
     session.supabase
       .from("ideas")
       .select("id, title, updated_at")
@@ -28,6 +28,13 @@ export default async function ArchivePage() {
     session.supabase
       .from("inbox_items")
       .select("id, content, updated_at")
+      .eq("workspace_id", session.workspace.id)
+      .not("deleted_at", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(50),
+    session.supabase
+      .from("canvases")
+      .select("id, title, updated_at")
       .eq("workspace_id", session.workspace.id)
       .not("deleted_at", "is", null)
       .order("updated_at", { ascending: false })
@@ -51,6 +58,12 @@ export default async function ArchivePage() {
       id: row.id,
       kind: "inbox" as const,
       label: row.content.slice(0, 90),
+      updatedAt: row.updated_at,
+    })),
+    ...(canvases ?? []).map((row) => ({
+      id: row.id,
+      kind: "canvas" as const,
+      label: row.title,
       updatedAt: row.updated_at,
     })),
   ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

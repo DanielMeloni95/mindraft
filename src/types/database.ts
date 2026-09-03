@@ -246,6 +246,8 @@ export type ProjectRow = Timestamps & {
   value_proposition: string | null;
   website_url: string | null;
   domain: string | null;
+  context_scope: string | null;
+  tool_kind: "tool" | "application" | "extension" | "markjs" | "api" | "library" | "service" | null;
   scope_in: string | null;
   scope_out: string | null;
   status: ProjectStatus;

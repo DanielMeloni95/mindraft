@@ -197,10 +197,10 @@ export async function getProjectHeader(
   supabase: Supabase,
   workspaceId: string,
   projectId: string,
-): Promise<Pick<ProjectRow, "id" | "name" | "emoji" | "color" | "status" | "health" | "progress" | "next_step"> | null> {
+): Promise<Pick<ProjectRow, "id" | "name" | "emoji" | "color" | "short_description" | "website_url" | "status" | "health" | "progress" | "next_step" | "parent_project_id" | "context_scope"> | null> {
   const { data } = await supabase
     .from("projects")
-    .select("id, name, emoji, color, status, health, progress, next_step")
+    .select("id, name, emoji, color, short_description, website_url, status, health, progress, next_step, parent_project_id, context_scope")
     .eq("workspace_id", workspaceId)
     .eq("id", projectId)
     .is("deleted_at", null)

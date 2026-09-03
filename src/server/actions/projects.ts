@@ -46,6 +46,8 @@ export async function createProjectAction(
       sourceIdeaId: parsed.data.sourceIdeaId ?? null,
       parentProjectId: parsed.data.parentProjectId ?? null,
       entityKind: parsed.data.parentProjectId ? "subproject" : "project",
+      contextScope: parsed.data.contextScope ?? null,
+      websiteUrl: parsed.data.websiteUrl ?? null,
       status: parsed.data.status,
     });
 
@@ -95,6 +97,8 @@ export async function updateProjectAction(
         : {}),
       ...(rest.websiteUrl !== undefined ? { website_url: rest.websiteUrl } : {}),
       ...(rest.domain !== undefined ? { domain: rest.domain } : {}),
+      ...(rest.contextScope !== undefined ? { context_scope: rest.contextScope } : {}),
+      ...(rest.toolKind !== undefined ? { tool_kind: rest.toolKind } : {}),
       ...(rest.scopeIn !== undefined ? { scope_in: rest.scopeIn } : {}),
       ...(rest.scopeOut !== undefined ? { scope_out: rest.scopeOut } : {}),
       ...(rest.status !== undefined ? { status: rest.status } : {}),
@@ -113,6 +117,14 @@ export async function updateProjectAction(
       .eq("workspace_id", session.workspace.id);
 
     if (error) return fail(`Aggiornamento non riuscito: ${error.message}`);
+
+    if (rest.name !== undefined) {
+      await session.supabase.from("canvas_nodes").update({ label: rest.name })
+        .eq("workspace_id", session.workspace.id)
+        .eq("entity_type", "project")
+        .eq("entity_id", id)
+        .contains("data", { root: true });
+    }
 
     revalidatePath(`/projects/${id}`);
     revalidatePath("/projects");
@@ -156,15 +168,52 @@ export async function archiveProjectAction(
     if (!parsed.ok) return parsed.result;
 
     const session = await requireWriteSession();
-    const { error } = await session.supabase
+    const { data: project, error: projectError } = await session.supabase
+      .from("projects")
+      .select("id,name,parent_project_id")
+      .eq("id", parsed.data)
+      .eq("workspace_id", session.workspace.id)
+      .maybeSingle();
+
+    if (projectError) return fail(`Operazione non riuscita: ${projectError.message}`);
+    if (!project) return fail("Progetto non trovato.");
+
+    if (!restore) {
+      const { count, error: childrenError } = await session.supabase
+        .from("projects")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", session.workspace.id)
+        .eq("parent_project_id", parsed.data)
+        .is("deleted_at", null);
+      if (childrenError) return fail(`Verifica sottoprogetti non riuscita: ${childrenError.message}`);
+      if ((count ?? 0) > 0) {
+        return fail(`Elimina prima i ${count} sottoprogetti attivi di questo progetto.`);
+      }
+    }
+
+    const { data: updated, error } = await session.supabase
       .from("projects")
       .update({ deleted_at: restore ? null : new Date().toISOString() })
       .eq("id", parsed.data)
-      .eq("workspace_id", session.workspace.id);
+      .eq("workspace_id", session.workspace.id)
+      .select("id")
+      .maybeSingle();
 
     if (error) return fail(`Operazione non riuscita: ${error.message}`);
+    if (!updated) return fail("Progetto non trovato o non modificabile.");
+
+    await logActivity(session.supabase, {
+      workspaceId: session.workspace.id,
+      actorId: session.userId,
+      action: restore ? "restored" : "deleted",
+      entityType: "project",
+      entityId: project.id,
+      summary: project.name,
+    });
 
     revalidatePath("/projects");
+    revalidatePath("/subprojects");
+    revalidatePath("/archive");
     revalidatePath("/home");
     return ok();
   });

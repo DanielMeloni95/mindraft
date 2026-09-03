@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { ProjectTabs } from "@/components/projects/project-tabs";
+import { DeleteProjectButton } from "@/components/projects/delete-project-button";
+import { EditProjectButton } from "@/components/projects/edit-project-button";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -44,6 +46,7 @@ export default async function ProjectLayout({
             </h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <StatusBadge descriptor={PROJECT_STATUS_MAP[project.status]} />
+              {project.context_scope && <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{project.context_scope}</span>}
               {project.health !== "unknown" && (
                 <StatusBadge descriptor={PROJECT_HEALTH_MAP[project.health]} />
               )}
@@ -55,6 +58,10 @@ export default async function ProjectLayout({
               </span>
             </div>
           </div>
+          {session.canWrite && <div className="flex items-center gap-2">
+            <EditProjectButton project={project} />
+            <DeleteProjectButton projectId={id} isSubproject={Boolean(project.parent_project_id)} />
+          </div>}
         </div>
       </header>
 

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { CanvasClient } from "@/components/canvas/canvas-client";
+import { DeleteCanvasButton } from "@/components/canvas/delete-canvas-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getCanvasBundle } from "@/server/queries/canvas";
 import { getProject } from "@/server/queries/projects";
@@ -33,11 +34,11 @@ export default async function ProjectCanvasPage({
 
   return (
     <div className="space-y-3">
-      <p className="text-[13px] leading-relaxed text-muted-foreground">
+      <div className="flex items-start gap-3"><p className="min-w-0 flex-1 text-[13px] leading-relaxed text-muted-foreground">
         I nodi collegati a un elemento reale portano l&apos;icona di apertura: rinominarli
         rinomina anche l&apos;elemento. Gli altri si possono convertire dal menu «Nodo
         selezionato».
-      </p>
+      </p>{session.canWrite && <DeleteCanvasButton canvasId={bundle.canvas.id} projectId={id} />}</div>
       <CanvasClient
         canvasId={bundle.canvas.id}
         initialNodes={bundle.nodes}
